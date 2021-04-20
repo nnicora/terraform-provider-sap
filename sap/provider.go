@@ -93,25 +93,9 @@ func Provider() *schema.Provider {
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"btp": {
-							Type:     schema.TypeList,
+							Type:     schema.TypeMap,
 							Optional: true,
-							MaxItems: 1,
-							Elem: &schema.Resource{
-								Schema: map[string]*schema.Schema{
-									"accounts": {
-										Type:        schema.TypeString,
-										Optional:    true,
-										Default:     "",
-										Description: "SAP BTP Accounts REST API Host",
-									},
-									"entitlements": {
-										Type:        schema.TypeString,
-										Optional:    true,
-										Default:     "",
-										Description: "SAP BTP Entitlements REST API Host",
-									},
-								},
-							},
+							Elem:     &schema.Schema{Type: schema.TypeString},
 						},
 					},
 				},
@@ -132,10 +116,10 @@ func Provider() *schema.Provider {
 			"sap_btp_sub_account_service_management_binding": resourceSapBtpSubAccountServiceManagementBinding(),
 			"sap_btp_account_directory":                      resourceSapBtpAccountDirectory(),
 
-			"sap_btp_entitlement":           resourceSapBtpEntitlementFixedAssignments(),
-			"sap_btp_saas_entitlement":      resourceSapBtpDynamicEntitlement("saas"),
-			"sap_btp_elastic_entitlement":   resourceSapBtpDynamicEntitlement("elastic"),
-			"sap_btp_unlimited_entitlement": resourceSapBtpDynamicEntitlement("unlimited"),
+			"sap_btp_entitlements":           resourceSapBtpEntitlements(),
+			"sap_btp_saas_entitlements":      resourceSapBtpDynamicEntitlements("saas"),
+			"sap_btp_elastic_entitlements":   resourceSapBtpDynamicEntitlements("elastic"),
+			"sap_btp_unlimited_entitlements": resourceSapBtpDynamicEntitlements("unlimited"),
 		},
 	}
 
@@ -165,12 +149,11 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData, terraformVer
 	btpEndpoints := mapFromFromSet(endpoints["btp"])
 	log.Printf("[DEBUG] SAP BTP Endpoints: %v", btpEndpoints)
 
-	endpointsCfg := make(map[string]*sap.EndpointConfig, 0)
-	endpointsCfg["accounts"] = &sap.EndpointConfig{
-		Host: getOr(btpEndpoints, "accounts", "").(string),
-	}
-	endpointsCfg["entitlements"] = &sap.EndpointConfig{
-		Host: getOr(btpEndpoints, "entitlements", "").(string),
+	endpointsCfg := make(map[string]*sap.EndpointConfig)
+	for key := range btpEndpoints {
+		endpointsCfg[key] = &sap.EndpointConfig{
+			Host: getOr(btpEndpoints, key, "").(string),
+		}
 	}
 
 	cfg := &sap.Config{
@@ -215,7 +198,7 @@ func mapFromFromSet(block interface{}) map[string]interface{} {
 		return l[0].(map[string]interface{})
 	}
 	if m, ok := block.(map[string]interface{}); ok {
-		return m[""].(map[string]interface{})
+		return m
 	}
 
 	return nil

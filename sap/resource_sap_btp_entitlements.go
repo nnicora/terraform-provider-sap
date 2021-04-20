@@ -2,20 +2,23 @@ package sap
 
 import (
 	"context"
+	"fmt"
 	"github.com/hashicorp/go-uuid"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	"github.com/nnicora/sap-sdk-go/sap"
 	"github.com/nnicora/sap-sdk-go/service/btpentitlements"
 	"time"
 )
 
-func resourceSapBtpDynamicEntitlement(plan string) *schema.Resource {
+func resourceSapBtpEntitlements() *schema.Resource {
 	return &schema.Resource{
-		CreateContext: resourceSapBtpDynamicEntitlementCreate(plan),
-		ReadContext:   resourceSapBtpDynamicEntitlementRead(plan),
-		UpdateContext: resourceSapBtpDynamicEntitlementUpdate(plan),
-		DeleteContext: resourceSapBtpDynamicEntitlementDelete(plan),
+		CreateContext: resourceSapBtpEntitlementFixedAssignmentsCreate,
+		ReadContext:   resourceSapBtpEntitlementFixedAssignmentsRead,
+		UpdateContext: resourceSapBtpEntitlementFixedAssignmentsUpdate,
+		DeleteContext: resourceSapBtpEntitlementFixedAssignmentsDelete,
 		Importer: &schema.ResourceImporter{
 			StateContext: schema.ImportStatePassthroughContext,
 		},
@@ -33,12 +36,21 @@ func resourceSapBtpDynamicEntitlement(plan string) *schema.Resource {
 							Type:     schema.TypeString,
 							Required: true,
 						},
+						"plan_name": {
+							Type:     schema.TypeString,
+							Required: true,
+						},
 						"assignment": {
 							Type:     schema.TypeList,
 							Required: true,
 							MinItems: 1,
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
+									"amount": {
+										Type:         schema.TypeInt,
+										Optional:     true,
+										ValidateFunc: validation.IntAtLeast(1),
+									},
 									"sub_account_id": {
 										Type:     schema.TypeString,
 										Required: true,
@@ -83,100 +95,177 @@ func resourceSapBtpDynamicEntitlement(plan string) *schema.Resource {
 	}
 }
 
-func resourceSapBtpDynamicEntitlementCreate(plan string) func(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	return func(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-		btpEntitlementsV1Client := meta.(*SAPClient).btpEntitlementsV1Client
+func resourceSapBtpEntitlementFixedAssignmentsCreate(ctx context.Context,
+	d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 
-		input := &btpentitlements.UpdateSubAccountServicePlanInput{
-			SubAccountServicePlans: buildDynamicEntitlementsSubAccountServicePlan(plan, d.Get("service")),
-		}
-		if output, err := btpEntitlementsV1Client.UpdateSubAccountServicePlan(ctx, input); err != nil {
-			return diag.Errorf("BTP Sub Account assignment can't be created:  %v", err)
-		} else if output.StatusCode != 202 {
-			return diag.Errorf("BTP Sub Account assignment can't be created; Operation code %v; %v", output.StatusCode, output.Error.Message)
-		}
-
-		if uuidString, err := uuid.GenerateUUID(); err != nil {
-			return diag.FromErr(err)
-		} else {
-			d.SetId(uuidString)
-		}
-
-		return nil
+	if uuidString, err := uuid.GenerateUUID(); err != nil {
+		return diag.FromErr(err)
+	} else {
+		d.SetId(uuidString)
 	}
+	plans := buildEntitlementsSubAccountServicePlan(d.Get("service"))
+	return entitlementsUpdateSubAccountServicePlan(ctx, "created", plans, meta)
 }
 
-func resourceSapBtpDynamicEntitlementRead(plan string) func(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	return func(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-		//btpAccountsV1Client := meta.(*SAPClient).btpAccountsV1Client
-		d.SetId(d.Id())
+func resourceSapBtpEntitlementFixedAssignmentsRead(ctx context.Context,
+	d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 
-		return nil
-	}
+	return nil
 }
 
-func resourceSapBtpDynamicEntitlementUpdate(plan string) func(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	return func(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-		btpEntitlementsV1Client := meta.(*SAPClient).btpEntitlementsV1Client
+func resourceSapBtpEntitlementFixedAssignmentsUpdate(ctx context.Context,
+	d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 
-		input := &btpentitlements.UpdateSubAccountServicePlanInput{
-			SubAccountServicePlans: buildDynamicEntitlementsSubAccountServicePlan(plan, d.Get("service")),
-		}
-		if output, err := btpEntitlementsV1Client.UpdateSubAccountServicePlan(ctx, input); err != nil {
-			return diag.Errorf("BTP Sub Account assignment can't be updated:  %v", err)
-		} else if output.StatusCode != 202 {
-			return diag.Errorf("BTP Sub Account assignment can't be updated; Operation code %v; %v", output.StatusCode, output.Error.Message)
-		}
-
-		d.SetId(d.Id())
-
-		return nil
-	}
+	plans := buildEntitlementsSubAccountServicePlan(d.Get("service"))
+	return entitlementsUpdateSubAccountServicePlan(ctx, "updated", plans, meta)
 }
 
-func resourceSapBtpDynamicEntitlementDelete(plan string) func(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	return func(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-		btpEntitlementsV1Client := meta.(*SAPClient).btpEntitlementsV1Client
+func resourceSapBtpEntitlementFixedAssignmentsDelete(ctx context.Context,
+	d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 
-		plans := buildDynamicEntitlementsSubAccountServicePlan(plan, d.Get("service"))
-		for _, plan := range plans {
-			for _, assignmentInfo := range plan.AssignmentInfo {
-				if assignmentInfo.Amount != nil {
-					assignmentInfo.Amount = sap.Float32(0)
-				}
-				if assignmentInfo.Amount != nil {
-					assignmentInfo.Enable = sap.Bool(false)
-				}
+	plans := buildEntitlementsSubAccountServicePlan(d.Get("service"))
+	for planIdx := range plans {
+		assInfos := plans[planIdx].AssignmentInfo
+		for assInfoIdx := range assInfos {
+			if assInfos[assInfoIdx].Amount != nil {
+				assInfos[assInfoIdx].Amount = sap.Float32(0)
+			}
+			if assInfos[assInfoIdx].Enable != nil {
+				assInfos[assInfoIdx].Enable = nil
 			}
 		}
-		input := &btpentitlements.UpdateSubAccountServicePlanInput{
-			SubAccountServicePlans: plans,
-		}
-		if output, err := btpEntitlementsV1Client.UpdateSubAccountServicePlan(ctx, input); err != nil {
-			return diag.Errorf("BTP Sub Account assignment can't be delete:  %v", err)
-		} else if output.StatusCode != 202 {
-			return diag.Errorf("BTP Sub Account assignment can't be delete; Operation code %v; %v", output.StatusCode, output.Error.Message)
-		}
-
-		d.SetId("")
-
-		return nil
 	}
+	return entitlementsUpdateSubAccountServicePlan(ctx, "deleted", plans, meta)
 }
 
-func buildDynamicEntitlementsResources(data interface{}) []btpentitlements.Resource {
-	result := make([]btpentitlements.Resource, 0)
+func entitlementsUpdateSubAccountServicePlan(ctx context.Context, operation string,
+	servicePlans []btpentitlements.SubAccountServicePlan, meta interface{}) diag.Diagnostics {
+	btpEntitlementsV1Client := meta.(*SAPClient).btpEntitlementsV1Client
 
+	input := &btpentitlements.UpdateSubAccountServicePlanInput{
+		SubAccountServicePlans: servicePlans,
+	}
+	if output, err := btpEntitlementsV1Client.UpdateSubAccountServicePlan(ctx, input); err != nil {
+		if output != nil && output.Error.Message != nil {
+			return diag.Errorf("BTP Sub Account assignment can't be %s; Operation code %v; %s",
+				operation, output.StatusCode, sap.StringValue(output.Error.Message))
+		} else {
+			return diag.Errorf("BTP Sub Account assignment can't be %s:  %v", operation, err)
+		}
+	} else if output.StatusCode != 202 {
+		return diag.Errorf("BTP Sub Account assignment can't be %s; Operation code %v; %s",
+			operation, output.StatusCode, sap.StringValue(output.Error.Message))
+	} else {
+		retryErr := resource.RetryContext(ctx, 2*time.Minute, func() *resource.RetryError {
+			jobInput := &btpentitlements.GetJobStatusInput{
+				JobId: sap.StringValue(output.JobStatusId),
+			}
+			if jobOut, err := btpEntitlementsV1Client.GetJobStatus(ctx, jobInput); err != nil {
+				return resource.RetryableError(err)
+			} else {
+				// IN_PROGRESS, COMPLETED, FAILED
+				if jobOut.Status == "IN_PROGRESS" {
+					return resource.RetryableError(
+						fmt.Errorf("BTP Sub Account Entitlements in progress; %s", jobOut.Description))
+				} else if jobOut.Status == "FAILED" {
+					return resource.NonRetryableError(
+						fmt.Errorf("BTP Sub Account Entitlements failed; %s", jobOut.Description))
+				} else {
+					return nil
+				}
+			}
+		})
+
+		if retryErr != nil && isResourceTimeoutError(retryErr) {
+			return diag.FromErr(retryErr)
+		}
+	}
+
+	return nil
+}
+
+func buildEntitlementsSubAccountServicePlan(data interface{}) []btpentitlements.SubAccountServicePlan {
 	if data == nil {
-		return result
+		return nil
 	}
 
-	maps, ok := data.([]map[string]interface{})
+	datas, ok := data.([]interface{})
 	if !ok {
-		return result
+		return nil
 	}
 
-	for _, m := range maps {
+	result := make([]btpentitlements.SubAccountServicePlan, 0)
+	for idx := range datas {
+		m, ok := datas[idx].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		elem := btpentitlements.SubAccountServicePlan{}
+		if val, ok := m["name"]; ok && val != nil {
+			elem.ServiceName = val.(string)
+		}
+		if val, ok := m["plan_name"]; ok && val != nil {
+			elem.ServicePlanName = val.(string)
+		}
+		if val, ok := m["assignment"]; ok && val != nil {
+			elem.AssignmentInfo = buildEntitlementsAssignments(val)
+		}
+
+		result = append(result, elem)
+	}
+	return result
+}
+
+func buildEntitlementsAssignments(data interface{}) []btpentitlements.AssignmentInfo {
+	if data == nil {
+		return nil
+	}
+
+	datas, ok := data.([]interface{})
+	if !ok {
+		return nil
+	}
+
+	result := make([]btpentitlements.AssignmentInfo, 0)
+	for idx := range datas {
+		m, ok := datas[idx].(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		elem := btpentitlements.AssignmentInfo{}
+		if val, ok := m["amount"]; ok && val != nil {
+			elem.Amount = sap.Float32(float32(val.(int)))
+		}
+		if val, ok := m["sub_account_id"]; ok && val != nil {
+			elem.SubAccountGuid = val.(string)
+		}
+		if val, ok := m["resource"]; ok && val != nil {
+			elem.Resources = buildEntitlementsResources(val)
+		}
+
+		result = append(result, elem)
+	}
+	return result
+}
+
+func buildEntitlementsResources(data interface{}) []btpentitlements.Resource {
+	if data == nil {
+		return nil
+	}
+
+	datas, ok := data.([]interface{})
+	if !ok {
+		return nil
+	}
+
+	result := make([]btpentitlements.Resource, 0)
+	for idx := range datas {
+		m, ok := datas[idx].(map[string]interface{})
+		if !ok {
+			continue
+		}
+
 		elem := btpentitlements.Resource{}
 		if val, ok := m["name"]; ok && val != nil {
 			elem.Name = val.(string)
@@ -193,65 +282,6 @@ func buildDynamicEntitlementsResources(data interface{}) []btpentitlements.Resou
 		if val, ok := m["data"]; ok && val != nil {
 			elem.Data = val.(string)
 		}
-		result = append(result, elem)
-	}
-	return result
-}
-
-func buildDynamicEntitlementsAssignments(data interface{}) []btpentitlements.AssignmentInfo {
-	result := make([]btpentitlements.AssignmentInfo, 0)
-
-	if data == nil {
-		return result
-	}
-
-	maps, ok := data.([]map[string]interface{})
-	if !ok {
-		return result
-	}
-
-	for _, m := range maps {
-		elem := btpentitlements.AssignmentInfo{
-			Enable: sap.Bool(true),
-		}
-		if val, ok := m["amount"]; ok && val != nil {
-			elem.Amount = sap.Float32(val.(float32))
-		}
-		if val, ok := m["sub_account_id"]; ok && val != nil {
-			elem.SubAccountGuid = val.(string)
-		}
-		if val, ok := m["resource"]; ok && val != nil {
-			elem.Resources = buildDynamicEntitlementsResources(val)
-		}
-
-		result = append(result, elem)
-	}
-	return result
-}
-
-func buildDynamicEntitlementsSubAccountServicePlan(plan string, data interface{}) []btpentitlements.SubAccountServicePlan {
-	result := make([]btpentitlements.SubAccountServicePlan, 0)
-
-	if data == nil {
-		return result
-	}
-
-	maps, ok := data.([]map[string]interface{})
-	if !ok {
-		return result
-	}
-
-	for _, m := range maps {
-		elem := btpentitlements.SubAccountServicePlan{
-			ServicePlanName: plan,
-		}
-		if val, ok := m["name"]; ok && val != nil {
-			elem.ServiceName = val.(string)
-		}
-		if val, ok := m["assignment"]; ok && val != nil {
-			elem.AssignmentInfo = buildDynamicEntitlementsAssignments(val)
-		}
-
 		result = append(result, elem)
 	}
 	return result
