@@ -103,8 +103,8 @@ func Provider() *schema.Provider {
 		},
 
 		DataSourcesMap: map[string]*schema.Resource{
-			"sap_btp_global_account":             dataSourceSapBtpGlobalAccount(),
-			"sap_btp_global_account_assignments": dataSourceSapBtpGlobalAccountAssignments(),
+			"sap_btp_global_account": dataSourceSapBtpGlobalAccount(),
+			//"sap_btp_global_account_assignments": dataSourceSapBtpGlobalAccountAssignments(),
 
 			"sap_btp_sub_account":                   dataSourceSapBtpSubAccount(),
 			"sap_btp_sub_account_custom_properties": dataSourceSapBtpSubAccountCustomProperties(),

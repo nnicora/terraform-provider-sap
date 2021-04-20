@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/nnicora/sap-sdk-go/sap"
 	"github.com/nnicora/sap-sdk-go/service/btpaccounts"
 	"github.com/pkg/errors"
 	"time"
@@ -136,55 +137,57 @@ func dataSourceSapBtpAccountDirectory() *schema.Resource {
 func dataSourceSapBtpAccountDirectoryRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	btpAccountsClient := meta.(*SAPClient).btpAccountsV1Client
 
-	if directoryId, ok := d.GetOk("directory_id"); ok {
-
-		dirInput := &btpaccounts.GetDirectoryInput{
-			DirectoryGuid:         directoryId.(string),
-			DerivedAuthorizations: d.Get("derived_authorizations").(string),
-		}
-
-		if dirOutput, err := btpAccountsClient.GetDirectory(ctx, dirInput); err != nil {
-			return diag.FromErr(errors.Errorf("BTP Directory can't be read:  %v", err))
-		} else {
-			d.SetId(dirOutput.Guid)
-			d.Set("contract_status", dirOutput.ContractStatus)
-			d.Set("created_by", dirOutput.CreatedBy)
-			d.Set("created_date", dirOutput.CreatedDate.Format(time.RFC3339))
-			d.Set("description", dirOutput.Description)
-			d.Set("display_name", dirOutput.DisplayName)
-			d.Set("modified_date", dirOutput.ModifiedDate.Format(time.RFC3339))
-			d.Set("features", dirOutput.DirectoryFeatures)
-			d.Set("parent_id", dirOutput.ParentGuid)
-			d.Set("state_message", dirOutput.StateMessage)
-			d.Set("subdomain", dirOutput.Subdomain)
-			d.Set("children", dirOutput.Children)
-			d.Set("entity_state", dirOutput.EntityState)
-
-			cpm := make([]map[string]interface{}, len(dirOutput.CustomProperties))
-			for idx, saCP := range dirOutput.CustomProperties {
-				dm := make(map[string]interface{})
-				dm["key"] = saCP.Key
-				dm["value"] = saCP.Value
-				dm["account_id"] = saCP.AccountGuid
-
-				cpm[idx] = dm
-			}
-			d.Set("custom_properties", cpm)
-
-			subAccs := make([]map[string]string, len(dirOutput.SubAccounts))
-			for idx, subAcc := range dirOutput.SubAccounts {
-				dm := make(map[string]string)
-				dm["account_id"] = subAcc.Guid
-				dm["global_account_id"] = subAcc.GlobalAccountGuid
-
-				subAccs[idx] = dm
-			}
-			d.Set("sub_accounts", cpm)
-
-		}
-	} else {
-		return diag.FromErr(errors.New("directory_id must be set when want to read an directory"))
+	input := &btpaccounts.GetDirectoryInput{
+		DirectoryGuid: d.Get("directory_id").(string),
 	}
+	if val, ok := d.GetOk("derived_authorizations"); ok {
+		input.DerivedAuthorizations = val.(string)
+	}
+
+	if output, err := btpAccountsClient.GetDirectory(ctx, input); err != nil {
+		if output != nil && output.Error != nil {
+			return diag.FromErr(
+				errors.Errorf("BTP Directory can't be read; %s", sap.StringValue(output.Error.Message)))
+		}
+
+		return diag.FromErr(errors.Errorf("BTP Directory can't be read;  %v", err))
+	} else {
+		d.SetId(output.Guid)
+		d.Set("contract_status", output.ContractStatus)
+		d.Set("created_by", output.CreatedBy)
+		d.Set("created_date", output.CreatedDate.Format(time.RFC3339))
+		d.Set("description", output.Description)
+		d.Set("display_name", output.DisplayName)
+		d.Set("modified_date", output.ModifiedDate.Format(time.RFC3339))
+		d.Set("features", output.DirectoryFeatures)
+		d.Set("parent_id", output.ParentGuid)
+		d.Set("state_message", output.StateMessage)
+		d.Set("subdomain", output.Subdomain)
+		d.Set("children", output.Children)
+		d.Set("entity_state", output.EntityState)
+
+		cpm := make([]map[string]interface{}, len(output.CustomProperties))
+		for idx, saCP := range output.CustomProperties {
+			dm := make(map[string]interface{})
+			dm["key"] = saCP.Key
+			dm["value"] = saCP.Value
+			dm["account_id"] = saCP.AccountGuid
+
+			cpm[idx] = dm
+		}
+		d.Set("custom_properties", cpm)
+
+		subAccs := make([]map[string]string, len(output.SubAccounts))
+		for idx, subAcc := range output.SubAccounts {
+			dm := make(map[string]string)
+			dm["account_id"] = subAcc.Guid
+			dm["global_account_id"] = subAcc.GlobalAccountGuid
+
+			subAccs[idx] = dm
+		}
+		d.Set("sub_accounts", cpm)
+	}
+
 	tags := make(map[string]interface{})
 	{
 		// TODO

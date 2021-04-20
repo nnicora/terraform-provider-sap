@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/nnicora/sap-sdk-go/sap"
 	"github.com/nnicora/sap-sdk-go/service/btpaccounts"
 	"github.com/pkg/errors"
 	"time"
@@ -133,48 +134,50 @@ func dataSourceSapBtpSubAccount() *schema.Resource {
 func dataSourceSapBtpSubAccountRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	btpAccountsClient := meta.(*SAPClient).btpAccountsV1Client
 
-	if subAccountId, ok := d.GetOk("sub_account_id"); ok {
-
-		saInput := &btpaccounts.GetSubAccountInput{
-			SubAccountGuid:        subAccountId.(string),
-			DerivedAuthorizations: d.Get("derived_authorizations").(string),
-		}
-
-		if saOutput, err := btpAccountsClient.GetSubAccount(ctx, saInput); err != nil {
-			return diag.FromErr(errors.Errorf("BTP Sub Account Custom Properties can't be read:  %v", err))
-		} else {
-			d.SetId(saOutput.Guid)
-			d.Set("global_account_id", saOutput.GlobalAccountGuid)
-			d.Set("beta_enabled", saOutput.BetaEnabled)
-			d.Set("created_by", saOutput.CreatedBy)
-			d.Set("created_date", saOutput.CreatedDate.Format(time.RFC3339))
-			d.Set("description", saOutput.Description)
-			d.Set("display_name", saOutput.DisplayName)
-			d.Set("modified_date", saOutput.ModifiedDate.Format(time.RFC3339))
-			d.Set("parent_features", saOutput.ParentFeatures)
-			d.Set("parent_id", saOutput.ParentGuid)
-			d.Set("region", saOutput.Region)
-			d.Set("state", saOutput.State)
-			d.Set("state_message", saOutput.StateMessage)
-			d.Set("subdomain", saOutput.Subdomain)
-			d.Set("used_for_production", saOutput.UsedForProduction)
-			d.Set("zone_id", saOutput.ZoneId)
-
-			cpm := make([]map[string]interface{}, 0)
-			for _, saCP := range saOutput.CustomProperties {
-				dm := make(map[string]interface{})
-				dm["key"] = saCP.Key
-				dm["value"] = saCP.Value
-				dm["account_id"] = saCP.AccountGuid
-
-				cpm = append(cpm, dm)
-			}
-			d.Set("custom_properties", cpm)
-
-		}
-	} else {
-		return diag.FromErr(errors.New("sub_account_id must be set when want to read an sub-account custom properties"))
+	input := &btpaccounts.GetSubAccountInput{
+		SubAccountGuid: d.Get("sub_account_id").(string),
 	}
+	if val, ok := d.GetOk("derived_authorizations"); ok {
+		input.DerivedAuthorizations = val.(string)
+	}
+
+	if output, err := btpAccountsClient.GetSubAccount(ctx, input); err != nil {
+		if output != nil && output.Error != nil {
+			return diag.FromErr(
+				errors.Errorf("BTP Sub Account can't be read; %s", sap.StringValue(output.Error.Message)))
+		}
+		return diag.FromErr(errors.Errorf("BTP Sub Account can't be read;  %v", err))
+	} else {
+		d.SetId(output.Guid)
+		d.Set("global_account_id", output.GlobalAccountGuid)
+		d.Set("beta_enabled", output.BetaEnabled)
+		d.Set("created_by", output.CreatedBy)
+		d.Set("created_date", output.CreatedDate.Format(time.RFC3339))
+		d.Set("description", output.Description)
+		d.Set("display_name", output.DisplayName)
+		d.Set("modified_date", output.ModifiedDate.Format(time.RFC3339))
+		d.Set("parent_features", output.ParentFeatures)
+		d.Set("parent_id", output.ParentGuid)
+		d.Set("region", output.Region)
+		d.Set("state", output.State)
+		d.Set("state_message", output.StateMessage)
+		d.Set("subdomain", output.Subdomain)
+		d.Set("used_for_production", output.UsedForProduction)
+		d.Set("zone_id", output.ZoneId)
+
+		cpm := make([]map[string]interface{}, 0)
+		for _, saCP := range output.CustomProperties {
+			dm := make(map[string]interface{})
+			dm["key"] = saCP.Key
+			dm["value"] = saCP.Value
+			dm["account_id"] = saCP.AccountGuid
+
+			cpm = append(cpm, dm)
+		}
+		d.Set("custom_properties", cpm)
+
+	}
+
 	tags := make(map[string]interface{})
 	{
 		// TODO

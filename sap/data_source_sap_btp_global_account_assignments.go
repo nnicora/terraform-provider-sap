@@ -6,7 +6,9 @@ import (
 	"github.com/hashicorp/go-uuid"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/nnicora/sap-sdk-go/sap"
 	"github.com/nnicora/sap-sdk-go/service/btpentitlements"
+	"github.com/pkg/errors"
 )
 
 func dataSourceSapBtpGlobalAccountAssignments() *schema.Resource {
@@ -172,16 +174,25 @@ func dataSourceSapBtpGlobalAccountAssignments() *schema.Resource {
 func dataSourceSapBtpGlobalAccountAssignmentsRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	btpEntitlementsV1Client := meta.(*SAPClient).btpEntitlementsV1Client
 
-	gaeInput := &btpentitlements.GlobalAccountAssignmentsInput{
-		AcceptLanguage:          d.Get("accept_language").(string),
-		IncludeAutoManagedPlans: d.Get("include_auto_managed_plans").(bool),
-		SubAccountGuid:          d.Get("sub_account_id").(string),
+	input := &btpentitlements.GlobalAccountAssignmentsInput{}
+	if val, ok := d.GetOk("accept_language"); ok {
+		input.AcceptLanguage = val.(string)
+	}
+	if val, ok := d.GetOk("include_auto_managed_plans"); ok {
+		input.IncludeAutoManagedPlans = val.(bool)
+	}
+	if val, ok := d.GetOk("sub_account_id"); ok {
+		input.SubAccountGuid = val.(string)
 	}
 
-	if gaeOutput, err := btpEntitlementsV1Client.GetGlobalAccountAssignments(ctx, gaeInput); err != nil {
-		return diag.FromErr(fmt.Errorf("can't get global account assignments: %w", err))
+	if output, err := btpEntitlementsV1Client.GetGlobalAccountAssignments(ctx, input); err != nil {
+		if output != nil && output.Error != nil {
+			return diag.FromErr(
+				errors.Errorf("BTP Global Account assignments can't be read; %s", sap.StringValue(output.Error.Message)))
+		}
+		return diag.FromErr(fmt.Errorf("BTP Global Account assignments can't be read; %w", err))
 	} else {
-		d.Set("entitled_services", gaeOutput.EntitledServices)
+		d.Set("entitled_services", output.EntitledServices)
 	}
 
 	tags := make(map[string]interface{})

@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/nnicora/sap-sdk-go/sap"
 	"github.com/nnicora/sap-sdk-go/service/btpaccounts"
 	"github.com/pkg/errors"
 	"time"
@@ -23,15 +24,15 @@ func resourceSapBtpAccountDirectory() *schema.Resource {
 			Delete: schema.DefaultTimeout(3 * time.Minute),
 		},
 		Schema: map[string]*schema.Schema{
-			"subdomain": {
-				Type:     schema.TypeString,
-				Required: true,
-			},
 			"display_name": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
 
+			"subdomain": {
+				Type:     schema.TypeString,
+				Optional: true,
+			},
 			"derived_authorizations": {
 				Type:     schema.TypeString,
 				Optional: true,
@@ -154,56 +155,67 @@ func resourceSapBtpAccountDirectory() *schema.Resource {
 func resourceSapBtpAccountDirectoryCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	btpAccountsClient := meta.(*SAPClient).btpAccountsV1Client
 
-	dirCPM := make([]btpaccounts.CustomProperties, 0)
-	cpValues := d.Get("custom_properties").([]map[string]string)
-	for _, m := range cpValues {
-		key := ""
-		if val, ok := m["key"]; ok {
-			key = val
-		}
-		value := ""
-		if val, ok := m["value"]; ok {
-			value = val
-		}
-		accountId := ""
-		if val, ok := m["account_id"]; ok {
-			accountId = val
-		}
+	var dirCPM []btpaccounts.CustomProperties
 
-		if len(key) <= 0 {
-			return diag.FromErr(errors.Errorf("BTP Account Directory; Custom Properties 'key' is empty:  %v", m))
-		}
-		if len(value) <= 0 {
-			return diag.FromErr(errors.Errorf("BTP Account Directory; Custom Properties 'value' is empty:  %v", m))
-		}
-		if len(accountId) <= 0 {
-			return diag.FromErr(errors.Errorf("BTP Account Directory; Custom Properties 'account_id' is empty:  %v", m))
-		}
+	resCP := d.Get("custom_properties")
+	if resCP != nil {
+		dirCPM = make([]btpaccounts.CustomProperties, 0)
+		cpValues := resCP.([]map[string]string)
+		for _, m := range cpValues {
+			key := ""
+			if val, ok := m["key"]; ok {
+				key = val
+			}
+			value := ""
+			if val, ok := m["value"]; ok {
+				value = val
+			}
 
-		cp := btpaccounts.CustomProperties{
-			KeyValue: btpaccounts.KeyValue{
-				Key:   key,
-				Value: value,
-			},
-			AccountGuid: accountId,
+			if len(key) <= 0 {
+				return diag.FromErr(errors.Errorf("BTP Account Directory; Custom Properties 'key' is empty:  %v", m))
+			}
+			if len(value) <= 0 {
+				return diag.FromErr(errors.Errorf("BTP Account Directory; Custom Properties 'value' is empty:  %v", m))
+			}
+
+			cp := btpaccounts.CustomProperties{
+				KeyValue: btpaccounts.KeyValue{
+					Key:   key,
+					Value: value,
+				},
+			}
+			dirCPM = append(dirCPM, cp)
 		}
-		dirCPM = append(dirCPM, cp)
 	}
 
-	dirInput := &btpaccounts.CreateDirectoryInput{
-		CustomProperties:  dirCPM,
-		Description:       d.Get("description").(string),
-		DirectoryAdmins:   d.Get("admins").([]string),
-		DirectoryFeatures: d.Get("features").([]string),
-		DisplayName:       d.Get("display_name").(string),
-		Subdomain:         d.Get("subdomain").(string),
+	input := &btpaccounts.CreateDirectoryInput{
+		CustomProperties: dirCPM,
+	}
+	if val, ok := d.GetOk("subdomain"); ok {
+		input.Subdomain = val.(string)
+	}
+	if val, ok := d.GetOk("description"); ok {
+		input.Description = val.(string)
+	}
+	if val, ok := d.GetOk("admins"); ok {
+		input.DirectoryAdmins = val.([]string)
+	}
+	if val, ok := d.GetOk("features"); ok {
+		input.DirectoryFeatures = val.([]string)
+	}
+	if val, ok := d.GetOk("display_name"); ok {
+		input.DisplayName = val.(string)
 	}
 
-	if dirOutput, err := btpAccountsClient.CreateDirectory(ctx, dirInput); err != nil {
-		return diag.FromErr(errors.Errorf("BTP Sub Account Directory can't be created:  %v", err))
+	if output, err := btpAccountsClient.CreateDirectory(ctx, input); err != nil {
+		if output != nil && output.Error != nil {
+			return diag.FromErr(
+				errors.Errorf("BTP Sub Account Directory can't be created; %s", sap.StringValue(output.Error.Message)))
+		}
+		return diag.FromErr(errors.Errorf("BTP Sub Account Directory can't be created;  %v", err))
 	} else {
-		d.SetId(dirOutput.Guid)
-		readFromDirectoryIntoResourceData(dirOutput.Directory, d)
+		d.SetId(output.Guid)
+		readFromDirectoryIntoResourceData(output.Directory, d)
 	}
 
 	return nil
@@ -212,16 +224,25 @@ func resourceSapBtpAccountDirectoryCreate(ctx context.Context, d *schema.Resourc
 func resourceSapBtpAccountDirectoryRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	btpAccountsClient := meta.(*SAPClient).btpAccountsV1Client
 
-	dirInput := &btpaccounts.GetDirectoryInput{
-		DirectoryGuid:         d.Id(),
-		DerivedAuthorizations: d.Get("derived_authorizations").(string),
-		Expand:                d.Get("expand").(bool),
+	input := &btpaccounts.GetDirectoryInput{
+		DirectoryGuid: d.Id(),
 	}
-	if dirOutput, err := btpAccountsClient.GetDirectory(ctx, dirInput); err != nil {
-		return diag.FromErr(errors.Errorf("BTP Sub Account Directory can't be read:  %v", err))
+	if val, ok := d.GetOk("derived_authorizations"); ok {
+		input.DerivedAuthorizations = val.(string)
+	}
+	if val, ok := d.GetOk("expand"); ok {
+		input.Expand = val.(bool)
+	}
+
+	if output, err := btpAccountsClient.GetDirectory(ctx, input); err != nil {
+		if output != nil && output.Error != nil {
+			return diag.FromErr(
+				errors.Errorf("BTP Sub Account Directory can't be read; %s", sap.StringValue(output.Error.Message)))
+		}
+		return diag.FromErr(errors.Errorf("BTP Sub Account Directory can't be read;  %v", err))
 	} else {
 		d.SetId(d.Id())
-		readFromDirectoryIntoResourceData(dirOutput.Directory, d)
+		readFromDirectoryIntoResourceData(output.Directory, d)
 	}
 
 	return nil
@@ -230,54 +251,59 @@ func resourceSapBtpAccountDirectoryRead(ctx context.Context, d *schema.ResourceD
 func resourceSapBtpAccountDirectoryUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	btpAccountsClient := meta.(*SAPClient).btpAccountsV1Client
 
-	dirCPM := make([]btpaccounts.CustomProperties, 0)
-	cpValues := d.Get("custom_properties").([]map[string]string)
-	for _, m := range cpValues {
-		key := ""
-		if val, ok := m["key"]; ok {
-			key = val
-		}
-		value := ""
-		if val, ok := m["value"]; ok {
-			value = val
-		}
-		accountId := ""
-		if val, ok := m["account_id"]; ok {
-			accountId = val
-		}
+	var dirCPM []btpaccounts.CustomProperties
 
-		if len(key) <= 0 {
-			return diag.FromErr(errors.Errorf("BTP Account Directory; Custom Properties 'key' is empty:  %v", m))
-		}
-		if len(value) <= 0 {
-			return diag.FromErr(errors.Errorf("BTP Account Directory; Custom Properties 'value' is empty:  %v", m))
-		}
-		if len(accountId) <= 0 {
-			return diag.FromErr(errors.Errorf("BTP Account Directory; Custom Properties 'account_id' is empty:  %v", m))
-		}
+	resCP := d.Get("custom_properties")
+	if resCP != nil {
+		dirCPM = make([]btpaccounts.CustomProperties, 0)
+		cpValues := resCP.([]map[string]string)
+		for _, m := range cpValues {
+			key := ""
+			if val, ok := m["key"]; ok {
+				key = val
+			}
+			value := ""
+			if val, ok := m["value"]; ok {
+				value = val
+			}
 
-		cp := btpaccounts.CustomProperties{
-			KeyValue: btpaccounts.KeyValue{
-				Key:   key,
-				Value: value,
-			},
-			AccountGuid: accountId,
+			if len(key) <= 0 {
+				return diag.FromErr(errors.Errorf("BTP Account Directory; Custom Properties 'key' is empty:  %v", m))
+			}
+			if len(value) <= 0 {
+				return diag.FromErr(errors.Errorf("BTP Account Directory; Custom Properties 'value' is empty:  %v", m))
+			}
+
+			cp := btpaccounts.CustomProperties{
+				KeyValue: btpaccounts.KeyValue{
+					Key:   key,
+					Value: value,
+				},
+			}
+			dirCPM = append(dirCPM, cp)
 		}
-		dirCPM = append(dirCPM, cp)
 	}
 
-	dirInput := &btpaccounts.UpdateDirectoryInput{
+	input := &btpaccounts.UpdateDirectoryInput{
 		DirectoryGuid:    d.Id(),
 		CustomProperties: dirCPM,
-		DisplayName:      d.Get("display_name").(string),
-		Description:      d.Get("description").(string),
+	}
+	if val, ok := d.GetOk("display_name"); ok {
+		input.DisplayName = val.(string)
+	}
+	if val, ok := d.GetOk("description"); ok {
+		input.Description = val.(string)
 	}
 
-	if dirOutput, err := btpAccountsClient.UpdateDirectory(ctx, dirInput); err != nil {
-		return diag.FromErr(errors.Errorf("BTP Sub Account Directory can't be created:  %v", err))
+	if output, err := btpAccountsClient.UpdateDirectory(ctx, input); err != nil {
+		if output != nil && output.Error != nil {
+			return diag.FromErr(
+				errors.Errorf("BTP Sub Account Directory can't be updated; %s", sap.StringValue(output.Error.Message)))
+		}
+		return diag.FromErr(errors.Errorf("BTP Sub Account Directory can't be updated;  %v", err))
 	} else {
-		d.SetId(dirOutput.Guid)
-		readFromDirectoryIntoResourceData(dirOutput.Directory, d)
+		d.SetId(output.Guid)
+		readFromDirectoryIntoResourceData(output.Directory, d)
 	}
 
 	return nil
@@ -322,12 +348,18 @@ func readFromDirectoryIntoResourceData(dir btpaccounts.Directory, d *schema.Reso
 func resourceSapBtpAccountDirectoryDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	btpAccountsClient := meta.(*SAPClient).btpAccountsV1Client
 
-	dirInput := &btpaccounts.DeleteDirectoryInput{
+	input := &btpaccounts.DeleteDirectoryInput{
 		DirectoryGuid: d.Id(),
-		ForceDelete:   d.Get("force_Delete").(bool),
 	}
-	if _, err := btpAccountsClient.DeleteDirectory(ctx, dirInput); err != nil {
-		return diag.FromErr(errors.Errorf("BTP Sub Account Directory can't be read:  %v", err))
+	if val, ok := d.GetOk("force_delete"); ok {
+		input.ForceDelete = val.(bool)
+	}
+	if output, err := btpAccountsClient.DeleteDirectory(ctx, input); err != nil {
+		if output != nil && output.Error != nil {
+			return diag.FromErr(
+				errors.Errorf("BTP Sub Account Directory can't be deleted; %s", sap.StringValue(output.Error.Message)))
+		}
+		return diag.FromErr(errors.Errorf("BTP Sub Account Directory can't be deleted;  %v", err))
 	}
 	return nil
 }

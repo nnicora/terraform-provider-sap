@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/nnicora/sap-sdk-go/sap"
 	"github.com/nnicora/sap-sdk-go/service/btpaccounts"
+	"github.com/pkg/errors"
 	"time"
 )
 
@@ -270,48 +272,52 @@ func dataSourceSapBtpGlobalAccount() *schema.Resource {
 func dataSourceSapBtpGlobalAccountRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	btpAccountsClient := meta.(*SAPClient).btpAccountsV1Client
 
-	derivedAuthorizations := d.Get("derived_authorizations").(string)
-	expand := d.Get("expand").(bool)
-
-	params := &btpaccounts.GetGlobalAccountInput{
-		DerivedAuthorizations: derivedAuthorizations,
-		Expand:                expand,
+	input := &btpaccounts.GetGlobalAccountInput{}
+	if val, ok := d.GetOk("derived_authorizations"); ok {
+		input.DerivedAuthorizations = val.(string)
 	}
-	ga, err := btpAccountsClient.GetGlobalAccount(ctx, params)
+	if val, ok := d.GetOk("expand"); ok {
+		input.Expand = val.(bool)
+	}
+	output, err := btpAccountsClient.GetGlobalAccount(ctx, input)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error getting API BAT Global Account Resources: %w", err))
+		if output != nil && output.Error != nil {
+			return diag.FromErr(
+				errors.Errorf("BTP Global Account can't be read; %s", sap.StringValue(output.Error.Message)))
+		}
+		return diag.FromErr(fmt.Errorf("BTP Global Account can't be read; %w", err))
 	}
 
-	d.SetId(ga.Guid)
-	d.Set("display_name", ga.DisplayName)
-	d.Set("description", ga.Description)
-	d.Set("const_center", ga.CostCenter)
+	d.SetId(output.Guid)
+	d.Set("display_name", output.DisplayName)
+	d.Set("description", output.Description)
+	d.Set("const_center", output.CostCenter)
 
-	d.Set("commercial_model", ga.CommercialModel)
-	d.Set("consumption_based", ga.ConsumptionBased)
-	d.Set("contract_status", ga.ContractStatus)
-	d.Set("created_date", ga.CreatedDate.Format(time.RFC3339))
-	d.Set("modified_date", ga.ModifiedDate.Format(time.RFC3339))
-	d.Set("crm_customer_id", ga.CrmCustomerId)
-	d.Set("crm_tenant_id", ga.CrmTenantId)
-	d.Set("entity_state", ga.EntityState)
-	d.Set("expiry_date", ga.ExpiryDate.Format(time.RFC3339))
-	d.Set("geo_access", ga.GeoAccess)
-	//d.Set("legal_links", ga.LegalLinks.Privacy)
-	d.Set("license_type", ga.LicenseType)
-	d.Set("origin", ga.Origin)
-	d.Set("parent_id", ga.ParentGuid)
-	d.Set("parent_type", ga.ParentType)
-	d.Set("renewal_date", ga.RenewalDate.Format(time.RFC3339))
-	d.Set("service_id", ga.ServiceId)
-	d.Set("state_message", ga.StateMessage)
-	d.Set("subdomain", ga.Subdomain)
-	d.Set("termination_notification_status", ga.TerminationNotificationStatus)
-	d.Set("use_for", ga.UseFor)
+	d.Set("commercial_model", output.CommercialModel)
+	d.Set("consumption_based", output.ConsumptionBased)
+	d.Set("contract_status", output.ContractStatus)
+	d.Set("created_date", output.CreatedDate.Format(time.RFC3339))
+	d.Set("modified_date", output.ModifiedDate.Format(time.RFC3339))
+	d.Set("crm_customer_id", output.CrmCustomerId)
+	d.Set("crm_tenant_id", output.CrmTenantId)
+	d.Set("entity_state", output.EntityState)
+	d.Set("expiry_date", output.ExpiryDate.Format(time.RFC3339))
+	d.Set("geo_access", output.GeoAccess)
+	//d.Set("legal_links", output.LegalLinks.Privacy)
+	d.Set("license_type", output.LicenseType)
+	d.Set("origin", output.Origin)
+	d.Set("parent_id", output.ParentGuid)
+	d.Set("parent_type", output.ParentType)
+	d.Set("renewal_date", output.RenewalDate.Format(time.RFC3339))
+	d.Set("service_id", output.ServiceId)
+	d.Set("state_message", output.StateMessage)
+	d.Set("subdomain", output.Subdomain)
+	d.Set("termination_notification_status", output.TerminationNotificationStatus)
+	d.Set("use_for", output.UseFor)
 
 	cp := make([]map[string]interface{}, 0)
 	{
-		for _, gaCP := range ga.CustomProperties {
+		for _, gaCP := range output.CustomProperties {
 			m := make(map[string]interface{})
 			m["key"] = gaCP.Key
 			m["value"] = gaCP.Value
@@ -324,7 +330,7 @@ func dataSourceSapBtpGlobalAccountRead(ctx context.Context, d *schema.ResourceDa
 
 	subAccounts := make([]map[string]interface{}, 0)
 	{
-		for _, sa := range ga.Subaccounts {
+		for _, sa := range output.Subaccounts {
 			m := make(map[string]interface{})
 			m["id"] = sa.Guid
 			m["global_account_id"] = sa.GlobalAccountGuid

@@ -146,14 +146,14 @@ func entitlementsUpdateSubAccountServicePlan(ctx context.Context, operation stri
 		SubAccountServicePlans: servicePlans,
 	}
 	if output, err := btpEntitlementsV1Client.UpdateSubAccountServicePlan(ctx, input); err != nil {
-		if output != nil && output.Error.Message != nil {
-			return diag.Errorf("BTP Sub Account assignment can't be %s; Operation code %v; %s",
+		if output != nil && output.Error != nil {
+			return diag.Errorf("BTP Sub Account Entitlements can't be %s; Operation code %v; %s",
 				operation, output.StatusCode, sap.StringValue(output.Error.Message))
 		} else {
-			return diag.Errorf("BTP Sub Account assignment can't be %s:  %v", operation, err)
+			return diag.Errorf("BTP Sub Account Entitlements can't be %s;  %v", operation, err)
 		}
 	} else if output.StatusCode != 202 {
-		return diag.Errorf("BTP Sub Account assignment can't be %s; Operation code %v; %s",
+		return diag.Errorf("BTP Sub Account Entitlements can't be %s; Operation code %v; %s",
 			operation, output.StatusCode, sap.StringValue(output.Error.Message))
 	} else {
 		retryErr := resource.RetryContext(ctx, 2*time.Minute, func() *resource.RetryError {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/nnicora/sap-sdk-go/sap"
 	"github.com/nnicora/sap-sdk-go/service/btpaccounts"
 	"github.com/pkg/errors"
 )
@@ -47,31 +48,31 @@ func dataSourceSapBtpSubAccountCustomProperties() *schema.Resource {
 func dataSourceSapBtpSubAccountCustomPropertiesRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	btpAccountsClient := meta.(*SAPClient).btpAccountsV1Client
 
-	if subAccountId, ok := d.GetOk("sub_account_id"); ok {
-
-		sacpInput := &btpaccounts.GetCustomPropertiesInput{
-			SubAccountGuid: subAccountId.(string),
-		}
-
-		if csmbInputOutput, err := btpAccountsClient.GetSubAccountCustomProperties(ctx, sacpInput); err != nil {
-			return diag.FromErr(errors.Errorf("BTP Sub Account Custom Properties can't be read:  %v", err))
-		} else {
-			d.SetId(subAccountId.(string))
-
-			cp := make([]map[string]interface{}, 0)
-			for _, cpValue := range csmbInputOutput.Value {
-				m := make(map[string]interface{})
-				m["key"] = cpValue.Key
-				m["value"] = cpValue.Value
-				m["account_id"] = cpValue.AccountGuid
-
-				cp = append(cp, m)
-			}
-			d.Set("custom_properties", cp)
-		}
-	} else {
-		return diag.FromErr(errors.New("sub_account_id must be set when want to read an sub-account custom properties"))
+	subAccountId := d.Get("sub_account_id")
+	input := &btpaccounts.GetCustomPropertiesInput{
+		SubAccountGuid: subAccountId.(string),
 	}
+	if output, err := btpAccountsClient.GetSubAccountCustomProperties(ctx, input); err != nil {
+		if output != nil && output.Error != nil {
+			return diag.FromErr(
+				errors.Errorf("BTP Sub Account Custom Properties can't be read; %s", sap.StringValue(output.Error.Message)))
+		}
+		return diag.FromErr(errors.Errorf("BTP Sub Account Custom Properties can't be read;  %v", err))
+	} else {
+		d.SetId(subAccountId.(string))
+
+		cp := make([]map[string]interface{}, 0)
+		for _, cpValue := range output.Value {
+			m := make(map[string]interface{})
+			m["key"] = cpValue.Key
+			m["value"] = cpValue.Value
+			m["account_id"] = cpValue.AccountGuid
+
+			cp = append(cp, m)
+		}
+		d.Set("custom_properties", cp)
+	}
+
 	tags := make(map[string]interface{})
 	{
 		// TODO

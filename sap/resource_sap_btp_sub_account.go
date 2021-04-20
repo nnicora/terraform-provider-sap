@@ -6,15 +6,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/nnicora/sap-sdk-go/sap"
 	"github.com/nnicora/sap-sdk-go/service/btpaccounts"
 	"github.com/pkg/errors"
-	"log"
 	"time"
 )
-
-//STARTED, CREATING, UPDATING, MOVING, PROCESSING, DELETING, OK, PENDING_REVIEW, CANCELED,
-//CREATION_FAILED, UPDATE_FAILED, UPDATE_ACCOUNT_TYPE_FAILED, UPDATE_DIRECTORY_TYPE_FAILED, PROCESSING_FAILED,
-//DELETION_FAILED, MOVE_FAILED, MIGRATING, MIGRATION_FAILED, ROLLBACK_MIGRATION_PROCESSING, MIGRATED
 
 func resourceSapBtpSubAccount() *schema.Resource {
 	return &schema.Resource{
@@ -144,109 +140,120 @@ func resourceSapBtpSubAccount() *schema.Resource {
 func resourceSapBtpSubAccountCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	btpAccountsClient := meta.(*SAPClient).btpAccountsV1Client
 
-	if gaId, ok := d.GetOk("global_account_id"); ok {
-		if region, ok := d.GetOk("region"); ok {
-
-			betaEnabled, _ := d.GetOk("beta_enabled")
-			usedForProduction, _ := d.GetOk("used_for_production")
-			displayName, _ := d.GetOk("display_name")
-			description, _ := d.GetOk("description")
-			subdomain, _ := d.GetOk("subdomain")
-			origin, _ := d.GetOk("origin")
-
-			customProperties := make([]btpaccounts.KeyValue, 0)
-			if v, ok := d.GetOk("custom_properties"); ok {
-				customProperties = expandSapBtpAccountCustomPropertiesParameters(v.([]interface{}))
-			}
-
-			subaccountAdmins := make([]string, 0)
-			if v, ok := d.GetOk("sub_account_admins"); ok {
-				subaccountAdmins = expandStringList(v.([]interface{}))
-			}
-
-			req := &btpaccounts.CreateSubAccountInput{
-				ParentGuid:        gaId.(string),
-				Region:            region.(string),
-				BetaEnabled:       betaEnabled.(bool),
-				DisplayName:       displayName.(string),
-				Description:       description.(string),
-				UsedForProduction: usedForProduction.(string),
-				Subdomain:         subdomain.(string),
-				CustomProperties:  customProperties,
-				SubaccountAdmins:  subaccountAdmins,
-				Origin:            origin.(string),
-			}
-
-			if respCreateSubAccount, err := btpAccountsClient.CreateSubAccount(ctx, req); err != nil {
-				return diag.FromErr(errors.Errorf("BTP Sub Account can't be created:  %v", err))
-			} else {
-				aId := respCreateSubAccount.Guid
-				retryErr := resource.RetryContext(ctx, 2*time.Minute, func() *resource.RetryError {
-					respSubAccount, gAcErr := btpAccountsClient.GetSubAccount(ctx, &btpaccounts.GetSubAccountInput{
-						SubAccountGuid: aId,
-					})
-					if gAcErr != nil {
-						return resource.RetryableError(gAcErr)
-					} else {
-						if respSubAccount.State == "CREATING" {
-							return resource.RetryableError(fmt.Errorf("account creation in progress"))
-						}
-						if respSubAccount.State == "OK" {
-							return nil
-						} else {
-							return resource.RetryableError(fmt.Errorf("btp subaccount not yet started"))
-						}
-					}
-
-					return nil
-				})
-
-				if retryErr != nil && isResourceTimeoutError(retryErr) {
-					return diag.FromErr(retryErr)
-				}
-
-				respSubAccount, gAcErr := btpAccountsClient.GetSubAccount(ctx, &btpaccounts.GetSubAccountInput{
-					SubAccountGuid: aId,
-				})
-				if gAcErr != nil {
-					return diag.FromErr(errors.New("btp sub-account not found"))
-				}
-
-				d.SetId(aId)
-				d.Set("beta_enabled", respSubAccount.BetaEnabled)
-				d.Set("created_by", respSubAccount.CreatedBy)
-				d.Set("created_date", respSubAccount.CreatedDate.Format(time.RFC3339))
-				d.Set("modified_date", respSubAccount.ModifiedDate.Format(time.RFC3339))
-				d.Set("parent_features", respSubAccount.ParentFeatures)
-				d.Set("parent_id", respSubAccount.ParentGuid)
-				d.Set("state", respSubAccount.State)
-				d.Set("state_message", respSubAccount.StateMessage)
-				d.Set("description", respSubAccount.Description)
-				d.Set("display_name", respSubAccount.DisplayName)
-				d.Set("global_account_id", respSubAccount.GlobalAccountGuid)
-				d.Set("region", respSubAccount.Region)
-				d.Set("zone_id", respSubAccount.ZoneId)
-				d.Set("used_for_production", respSubAccount.UsedForProduction)
-				d.Set("subdomain", respSubAccount.Subdomain)
-
-				cp := make([]map[string]interface{}, 0)
-				{
-					for _, gaCP := range respSubAccount.CustomProperties {
-						m := make(map[string]interface{})
-						m["key"] = gaCP.Key
-						m["value"] = gaCP.Value
-						cp = append(cp, m)
-					}
-				}
-				d.Set("custom_properties", cp)
-			}
-			return nil
-		} else {
-			return diag.FromErr(errors.New("region must be set when want to create an sub-account"))
-		}
-	} else {
-		return diag.FromErr(errors.New("global_account_id must be set when want to create an sub-account"))
+	customProperties := make([]btpaccounts.KeyValue, 0)
+	if v, ok := d.GetOk("custom_properties"); ok {
+		customProperties = expandSapBtpAccountCustomPropertiesParameters(v.([]interface{}))
 	}
+
+	subAccountAdmins := make([]string, 0)
+	if v, ok := d.GetOk("sub_account_admins"); ok {
+		subAccountAdmins = expandStringList(v.([]interface{}))
+	}
+
+	//"subdomain": {
+	//"used_for_production": {
+	//"origin": {
+	gaId := d.Get("global_account_id")
+	region := d.Get("region")
+
+	usedForProduction := d.Get("used_for_production")
+	displayName := d.Get("display_name")
+	subdomain := d.Get("subdomain")
+	origin := d.Get("origin")
+	input := &btpaccounts.CreateSubAccountInput{
+		ParentGuid:  gaId.(string),
+		Region:      region.(string),
+		DisplayName: displayName.(string),
+
+		UsedForProduction: usedForProduction.(string),
+		Subdomain:         subdomain.(string),
+		CustomProperties:  customProperties,
+		SubaccountAdmins:  subAccountAdmins,
+		Origin:            origin.(string),
+	}
+	if val, ok := d.GetOk("beta_enabled"); ok {
+		input.BetaEnabled = val.(bool)
+	}
+	if val, ok := d.GetOk("description"); ok {
+		input.Description = val.(string)
+	}
+
+	if output, err := btpAccountsClient.CreateSubAccount(ctx, input); err != nil {
+		if output != nil && output.Error != nil {
+			return diag.FromErr(
+				errors.Errorf("BTP Sub Account can't be created; %s", sap.StringValue(output.Error.Message)))
+		}
+		return diag.FromErr(errors.Errorf("BTP Sub Account can't be created;  %v", err))
+	} else {
+		aId := output.Guid
+		retryErr := resource.RetryContext(ctx, 2*time.Minute, func() *resource.RetryError {
+			respSubAccount, gAcErr := btpAccountsClient.GetSubAccount(ctx, &btpaccounts.GetSubAccountInput{
+				SubAccountGuid: aId,
+			})
+			if gAcErr != nil {
+				if respSubAccount != nil && respSubAccount.Error != nil {
+					return resource.RetryableError(
+						errors.Errorf("BTP Sub Account can't be read; %s", sap.StringValue(output.Error.Message)))
+				}
+				return resource.RetryableError(gAcErr)
+			} else {
+				if respSubAccount.State == "CREATING" {
+					return resource.RetryableError(fmt.Errorf("BTP Sub Account creation in progress"))
+				}
+				if respSubAccount.State == "OK" {
+					return nil
+				} else {
+					return resource.RetryableError(fmt.Errorf("BTP Sub Account not yet started"))
+				}
+			}
+
+			return nil
+		})
+
+		if retryErr != nil && isResourceTimeoutError(retryErr) {
+			return diag.FromErr(retryErr)
+		}
+
+		respSubAccount, gAcErr := btpAccountsClient.GetSubAccount(ctx, &btpaccounts.GetSubAccountInput{
+			SubAccountGuid: aId,
+		})
+		if gAcErr != nil {
+			if respSubAccount != nil && respSubAccount.Error != nil {
+				return diag.FromErr(
+					errors.Errorf("BTP Sub Account can't be read; %s", sap.StringValue(output.Error.Message)))
+			}
+			return diag.FromErr(errors.New("BTP Sub Account not found"))
+		}
+
+		d.SetId(aId)
+		d.Set("beta_enabled", respSubAccount.BetaEnabled)
+		d.Set("created_by", respSubAccount.CreatedBy)
+		d.Set("created_date", respSubAccount.CreatedDate.Format(time.RFC3339))
+		d.Set("modified_date", respSubAccount.ModifiedDate.Format(time.RFC3339))
+		d.Set("parent_features", respSubAccount.ParentFeatures)
+		d.Set("parent_id", respSubAccount.ParentGuid)
+		d.Set("state", respSubAccount.State)
+		d.Set("state_message", respSubAccount.StateMessage)
+		d.Set("description", respSubAccount.Description)
+		d.Set("display_name", respSubAccount.DisplayName)
+		d.Set("global_account_id", respSubAccount.GlobalAccountGuid)
+		d.Set("region", respSubAccount.Region)
+		d.Set("zone_id", respSubAccount.ZoneId)
+		d.Set("used_for_production", respSubAccount.UsedForProduction)
+		d.Set("subdomain", respSubAccount.Subdomain)
+
+		cp := make([]map[string]interface{}, 0)
+		{
+			for _, gaCP := range respSubAccount.CustomProperties {
+				m := make(map[string]interface{})
+				m["key"] = gaCP.Key
+				m["value"] = gaCP.Value
+				cp = append(cp, m)
+			}
+		}
+		d.Set("custom_properties", cp)
+	}
+	return nil
 }
 
 func expandSapBtpAccountCustomPropertiesParameters(config []interface{}) []btpaccounts.KeyValue {
@@ -273,14 +280,14 @@ func expandSapBtpAccountUpdateCustomPropertiesParameters(config []interface{}) [
 		param := c.(map[string]interface{})
 		key := param["key"].(string)
 		value := param["value"].(string)
-		delete := param["delete"].(bool)
+		deleteFlag := param["delete"].(bool)
 
 		prop := btpaccounts.UpdateSubAccountProperties{
 			KeyValue: btpaccounts.KeyValue{
 				Key:   key,
 				Value: value,
 			},
-			Delete: delete,
+			Delete: deleteFlag,
 		}
 		parameters = append(parameters, prop)
 	}
@@ -304,31 +311,35 @@ func expandStringList(configured []interface{}) []string {
 func resourceSapBtpSubAccountRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	btpAccountsClient := meta.(*SAPClient).btpAccountsV1Client
 
-	if resp, err := btpAccountsClient.GetSubAccount(ctx, &btpaccounts.GetSubAccountInput{
+	if output, err := btpAccountsClient.GetSubAccount(ctx, &btpaccounts.GetSubAccountInput{
 		SubAccountGuid: d.Id(),
 	}); err != nil {
-		return diag.FromErr(fmt.Errorf("BTP sub account can't be read: %#v", err))
+		if output != nil && output.Error != nil {
+			return diag.FromErr(
+				errors.Errorf("BTP Sub Account can't be read; %s", sap.StringValue(output.Error.Message)))
+		}
+		return diag.FromErr(fmt.Errorf("BTP Sub Account can't be read:; %#v", err))
 	} else {
-		d.SetId(resp.Guid)
-		d.Set("beta_enabled", resp.BetaEnabled)
-		d.Set("created_by", resp.CreatedBy)
-		d.Set("created_date", resp.CreatedDate.Format(time.RFC3339))
-		d.Set("modified_date", resp.ModifiedDate.Format(time.RFC3339))
-		d.Set("parent_features", resp.ParentFeatures)
-		d.Set("parent_id", resp.ParentGuid)
-		d.Set("state", resp.State)
-		d.Set("state_message", resp.StateMessage)
-		d.Set("description", resp.Description)
-		d.Set("display_name", resp.DisplayName)
-		d.Set("global_account_id", resp.GlobalAccountGuid)
-		d.Set("region", resp.Region)
-		d.Set("zone_id", resp.ZoneId)
-		d.Set("used_for_production", resp.UsedForProduction)
-		d.Set("subdomain", resp.Subdomain)
+		d.SetId(output.Guid)
+		d.Set("beta_enabled", output.BetaEnabled)
+		d.Set("created_by", output.CreatedBy)
+		d.Set("created_date", output.CreatedDate.Format(time.RFC3339))
+		d.Set("modified_date", output.ModifiedDate.Format(time.RFC3339))
+		d.Set("parent_features", output.ParentFeatures)
+		d.Set("parent_id", output.ParentGuid)
+		d.Set("state", output.State)
+		d.Set("state_message", output.StateMessage)
+		d.Set("description", output.Description)
+		d.Set("display_name", output.DisplayName)
+		d.Set("global_account_id", output.GlobalAccountGuid)
+		d.Set("region", output.Region)
+		d.Set("zone_id", output.ZoneId)
+		d.Set("used_for_production", output.UsedForProduction)
+		d.Set("subdomain", output.Subdomain)
 
 		cp := make([]map[string]interface{}, 0)
 		{
-			for _, gaCP := range resp.CustomProperties {
+			for _, gaCP := range output.CustomProperties {
 				m := make(map[string]interface{})
 				m["key"] = gaCP.Key
 				m["value"] = gaCP.Value
@@ -343,77 +354,83 @@ func resourceSapBtpSubAccountRead(ctx context.Context, d *schema.ResourceData, m
 func resourceSapBtpSubAccountUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	btpAccountsClient := meta.(*SAPClient).btpAccountsV1Client
 
-	betaEnabled, _ := d.GetOk("beta_enabled")
-	usedForProduction, _ := d.GetOk("used_for_production")
-	displayName, _ := d.GetOk("display_name")
-	description, _ := d.GetOk("description")
-
-	customProperties := []btpaccounts.UpdateSubAccountProperties{}
+	customProperties := make([]btpaccounts.UpdateSubAccountProperties, 0)
 	if v, ok := d.GetOk("custom_properties"); ok {
 		customProperties = expandSapBtpAccountUpdateCustomPropertiesParameters(v.([]interface{}))
 	}
 
-	reqInput := &btpaccounts.UpdateSubAccountInput{
+	usedForProduction := d.Get("used_for_production")
+	displayName := d.Get("display_name")
+	description := d.Get("description")
+	input := &btpaccounts.UpdateSubAccountInput{
 		SubAccountGuid:    d.Id(),
-		BetaEnabled:       betaEnabled.(bool),
 		CustomProperties:  customProperties,
 		Description:       description.(string),
 		DisplayName:       displayName.(string),
 		UsedForProduction: usedForProduction.(string),
 	}
-	if resp, err := btpAccountsClient.UpdateSubAccount(ctx, reqInput); err != nil {
-		return diag.FromErr(fmt.Errorf("BTP sub account can't be read: %#v", err))
+	if val, ok := d.GetOk("beta_enabled"); ok {
+		input.BetaEnabled = val.(bool)
+	}
+	if output, err := btpAccountsClient.UpdateSubAccount(ctx, input); err != nil {
+		if output != nil && output.Error != nil {
+			return diag.FromErr(
+				errors.Errorf("BTP Sub Account can't be updated; %s", sap.StringValue(output.Error.Message)))
+		}
+		return diag.FromErr(fmt.Errorf("BTP Sub Account can't be updated; %#v", err))
 	} else {
 		retryErr := resource.RetryContext(ctx, 2*time.Minute, func() *resource.RetryError {
 			if c, gAcErr := btpAccountsClient.GetSubAccount(ctx, &btpaccounts.GetSubAccountInput{
-				SubAccountGuid: resp.Guid,
+				SubAccountGuid: output.Guid,
 			}); gAcErr != nil {
 				return resource.NonRetryableError(gAcErr)
 			} else {
 				if c.State == "UPDATING" {
-					return resource.RetryableError(fmt.Errorf("account updating in progress"))
+					return resource.RetryableError(fmt.Errorf("BTP Sub Account updating in progress"))
 				}
 				if c.State == "OK" {
 					return nil
 				} else {
-					return resource.RetryableError(fmt.Errorf("btp subaccount not yet started"))
+					return resource.RetryableError(fmt.Errorf("state not identified"))
 				}
 			}
-
-			return nil
 		})
 
 		if retryErr != nil && isResourceTimeoutError(retryErr) {
 			return diag.FromErr(retryErr)
 		}
 
-		saInput := &btpaccounts.GetSubAccountInput{
-			SubAccountGuid: resp.Guid,
+		input := &btpaccounts.GetSubAccountInput{
+			SubAccountGuid: output.Guid,
 		}
-		if saOutput, err := btpAccountsClient.GetSubAccount(ctx, saInput); err != nil {
+		if output, err := btpAccountsClient.GetSubAccount(ctx, input); err != nil {
+			if output != nil && output.Error != nil {
+				return diag.FromErr(
+					errors.Errorf("BTP Sub Account can't be updated; %s", sap.StringValue(output.Error.Message)))
+			}
 			return diag.FromErr(retryErr)
 		} else {
 
-			d.SetId(saOutput.Guid)
-			d.Set("beta_enabled", saOutput.BetaEnabled)
-			d.Set("created_by", saOutput.CreatedBy)
-			d.Set("created_date", saOutput.CreatedDate.Format(time.RFC3339))
-			d.Set("modified_date", saOutput.ModifiedDate.Format(time.RFC3339))
-			d.Set("parent_features", saOutput.ParentFeatures)
-			d.Set("parent_id", saOutput.ParentGuid)
-			d.Set("state", saOutput.State)
-			d.Set("state_message", saOutput.StateMessage)
-			d.Set("description", saOutput.Description)
-			d.Set("display_name", saOutput.DisplayName)
-			d.Set("global_account_id", saOutput.GlobalAccountGuid)
-			d.Set("region", saOutput.Region)
-			d.Set("zone_id", saOutput.ZoneId)
-			d.Set("used_for_production", saOutput.UsedForProduction)
-			d.Set("subdomain", saOutput.Subdomain)
+			d.SetId(output.Guid)
+			d.Set("beta_enabled", output.BetaEnabled)
+			d.Set("created_by", output.CreatedBy)
+			d.Set("created_date", output.CreatedDate.Format(time.RFC3339))
+			d.Set("modified_date", output.ModifiedDate.Format(time.RFC3339))
+			d.Set("parent_features", output.ParentFeatures)
+			d.Set("parent_id", output.ParentGuid)
+			d.Set("state", output.State)
+			d.Set("state_message", output.StateMessage)
+			d.Set("description", output.Description)
+			d.Set("display_name", output.DisplayName)
+			d.Set("global_account_id", output.GlobalAccountGuid)
+			d.Set("region", output.Region)
+			d.Set("zone_id", output.ZoneId)
+			d.Set("used_for_production", output.UsedForProduction)
+			d.Set("subdomain", output.Subdomain)
 
 			cp := make([]map[string]interface{}, 0)
 			{
-				for _, gaCP := range saOutput.CustomProperties {
+				for _, gaCP := range output.CustomProperties {
 					m := make(map[string]interface{})
 					m["key"] = gaCP.Key
 					m["value"] = gaCP.Value
@@ -430,13 +447,15 @@ func resourceSapBtpSubAccountDelete(ctx context.Context, d *schema.ResourceData,
 	btpAccountsClient := meta.(*SAPClient).btpAccountsV1Client
 	aId := d.Id()
 
-	log.Printf("[INFO] Deleting Btp Subaccount: %s", aId)
-
-	_, err := btpAccountsClient.DeleteSubAccount(ctx, &btpaccounts.DeleteSubAccountInput{
+	output, err := btpAccountsClient.DeleteSubAccount(ctx, &btpaccounts.DeleteSubAccountInput{
 		SubAccountGuid: aId,
 	})
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error deleting BTO Sub-Account(%s): %w", d.Id(), err))
+		if output != nil && output.Error != nil {
+			return diag.FromErr(
+				errors.Errorf("BTP Sub Account can't be deleted; %s", sap.StringValue(output.Error.Message)))
+		}
+		return diag.FromErr(fmt.Errorf("BTP Sub Account can't be deleted; %#v", err))
 	}
 
 	retryErr := resource.RetryContext(ctx, 5*time.Minute, func() *resource.RetryError {
@@ -444,9 +463,10 @@ func resourceSapBtpSubAccountDelete(ctx context.Context, d *schema.ResourceData,
 			SubAccountGuid: aId,
 		}); gAcErr == nil {
 			if acc.State == "DELETING" {
-				return resource.RetryableError(fmt.Errorf("account still exist, having deletion in progress"))
+				return resource.RetryableError(fmt.Errorf("BTP Sub Account still exist, having deletion in progress"))
 			}
-			return resource.RetryableError(fmt.Errorf("account still exist, having deletion in progress: %s", acc.State))
+			return resource.RetryableError(
+				fmt.Errorf("BTP Sub Account still exist, having deletion in progress, having status %s", acc.State))
 		} else {
 			return resource.NonRetryableError(gAcErr)
 		}
