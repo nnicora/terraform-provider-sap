@@ -3,6 +3,7 @@ package sap
 import (
 	"encoding/base64"
 	"encoding/json"
+	"log"
 	"reflect"
 	"regexp"
 
@@ -60,4 +61,12 @@ func appendUniqueString(slice []string, elem string) []string {
 		}
 	}
 	return append(slice, elem)
+}
+
+func logDebug(input interface{}, msg string) {
+	if data, err := json.Marshal(input); err != nil {
+		log.Printf("[DEBUG] Error %s; %#v", msg, err)
+	} else {
+		log.Printf("[DEBUG] %s: %s", msg, string(data))
+	}
 }
