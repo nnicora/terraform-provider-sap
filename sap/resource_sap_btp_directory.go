@@ -10,12 +10,12 @@ import (
 	"time"
 )
 
-func resourceSapBtpAccountDirectory() *schema.Resource {
+func resourceSapBtpDirectory() *schema.Resource {
 	return &schema.Resource{
-		CreateContext: resourceSapBtpAccountDirectoryCreate,
-		ReadContext:   resourceSapBtpAccountDirectoryRead,
-		UpdateContext: resourceSapBtpAccountDirectoryUpdate,
-		DeleteContext: resourceSapBtpAccountDirectoryDelete,
+		CreateContext: resourceSapBtpDirectoryCreate,
+		ReadContext:   resourceSapBtpDirectoryRead,
+		UpdateContext: resourceSapBtpDirectoryUpdate,
+		DeleteContext: resourceSapBtpDirectoryDelete,
 		Importer: &schema.ResourceImporter{
 			StateContext: schema.ImportStatePassthroughContext,
 		},
@@ -32,6 +32,7 @@ func resourceSapBtpAccountDirectory() *schema.Resource {
 			"subdomain": {
 				Type:     schema.TypeString,
 				Optional: true,
+				Default:  "",
 			},
 			"derived_authorizations": {
 				Type:     schema.TypeString,
@@ -40,7 +41,6 @@ func resourceSapBtpAccountDirectory() *schema.Resource {
 			"expand": {
 				Type:     schema.TypeBool,
 				Optional: true,
-				Default:  false,
 			},
 			"force_delete": {
 				Type:     schema.TypeBool,
@@ -92,7 +92,7 @@ func resourceSapBtpAccountDirectory() *schema.Resource {
 				Computed: true,
 			},
 			"created_by": {
-				Type:     schema.TypeBool,
+				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
 			},
@@ -152,51 +152,15 @@ func resourceSapBtpAccountDirectory() *schema.Resource {
 	}
 }
 
-func resourceSapBtpAccountDirectoryCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceSapBtpDirectoryCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	btpAccountsClient := meta.(*SAPClient).btpAccountsV1Client
 
-	var dirCPM []btpaccounts.CustomProperties
-
-	resCP := d.Get("custom_properties")
-	if resCP != nil {
-		dirCPM = make([]btpaccounts.CustomProperties, 0)
-		if cpValues, ok := resCP.([]interface{}); ok {
-			for idx := range cpValues {
-				mps, ok := cpValues[idx].(map[string]interface{})
-				if !ok {
-					continue
-				}
-
-				key := ""
-				if val, ok := mps["key"]; ok {
-					key = val.(string)
-				}
-				value := ""
-				if val, ok := mps["value"]; ok {
-					value = val.(string)
-				}
-
-				if len(key) <= 0 {
-					return diag.FromErr(errors.Errorf("BTP Directory; Custom Properties 'key' is empty:  %v", mps))
-				}
-				if len(value) <= 0 {
-					return diag.FromErr(errors.Errorf("BTP Directory; Custom Properties 'value' is empty:  %v", mps))
-				}
-
-				cp := btpaccounts.CustomProperties{
-					KeyValue: btpaccounts.KeyValue{
-						Key:   key,
-						Value: value,
-					},
-				}
-				dirCPM = append(dirCPM, cp)
-			}
-		}
-
+	cp, err := toBtpAccountsCustomProperties(d.Get("custom_properties"))
+	if err != nil {
+		diag.FromErr(err)
 	}
-
 	input := &btpaccounts.CreateDirectoryInput{
-		CustomProperties: dirCPM,
+		CustomProperties: cp,
 	}
 	if val, ok := d.GetOk("subdomain"); ok {
 		input.Subdomain = val.(string)
@@ -230,7 +194,7 @@ func resourceSapBtpAccountDirectoryCreate(ctx context.Context, d *schema.Resourc
 	return nil
 }
 
-func resourceSapBtpAccountDirectoryRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceSapBtpDirectoryRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	btpAccountsClient := meta.(*SAPClient).btpAccountsV1Client
 
 	input := &btpaccounts.GetDirectoryInput{
@@ -259,51 +223,16 @@ func resourceSapBtpAccountDirectoryRead(ctx context.Context, d *schema.ResourceD
 	return nil
 }
 
-func resourceSapBtpAccountDirectoryUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceSapBtpDirectoryUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	btpAccountsClient := meta.(*SAPClient).btpAccountsV1Client
 
-	var dirCPM []btpaccounts.CustomProperties
-
-	resCP := d.Get("custom_properties")
-	if resCP != nil {
-		dirCPM = make([]btpaccounts.CustomProperties, 0)
-		if cpValues, ok := resCP.([]interface{}); ok {
-			for idx := range cpValues {
-				mps, ok := cpValues[idx].(map[string]interface{})
-				if !ok {
-					continue
-				}
-
-				key := ""
-				if val, ok := mps["key"]; ok {
-					key = val.(string)
-				}
-				value := ""
-				if val, ok := mps["value"]; ok {
-					value = val.(string)
-				}
-
-				if len(key) <= 0 {
-					return diag.FromErr(errors.Errorf("BTP Directory; Custom Properties 'key' is empty:  %v", mps))
-				}
-				if len(value) <= 0 {
-					return diag.FromErr(errors.Errorf("BTP Directory; Custom Properties 'value' is empty:  %v", mps))
-				}
-
-				cp := btpaccounts.CustomProperties{
-					KeyValue: btpaccounts.KeyValue{
-						Key:   key,
-						Value: value,
-					},
-				}
-				dirCPM = append(dirCPM, cp)
-			}
-		}
+	cp, err := toBtpAccountsCustomProperties(d.Get("custom_properties"))
+	if err != nil {
+		diag.FromErr(err)
 	}
-
 	input := &btpaccounts.UpdateDirectoryInput{
 		DirectoryGuid:    d.Id(),
-		CustomProperties: dirCPM,
+		CustomProperties: cp,
 	}
 	if val, ok := d.GetOk("display_name"); ok {
 		input.DisplayName = val.(string)
@@ -330,17 +259,24 @@ func resourceSapBtpAccountDirectoryUpdate(ctx context.Context, d *schema.Resourc
 
 func readFromDirectoryIntoResourceData(dir btpaccounts.Directory, d *schema.ResourceData) {
 	d.Set("contract_status", dir.ContractStatus)
-	d.Set("created_by", dir.CreatedBy)
 	d.Set("created_date", dir.CreatedDate.Format(time.RFC3339))
-	d.Set("description", dir.Description)
 	d.Set("display_name", dir.DisplayName)
 	d.Set("modified_date", dir.ModifiedDate.Format(time.RFC3339))
 	d.Set("features", dir.DirectoryFeatures)
 	d.Set("parent_id", dir.ParentGuid)
 	d.Set("state_message", dir.StateMessage)
-	d.Set("subdomain", dir.Subdomain)
 	d.Set("children", dir.Children)
 	d.Set("entity_state", dir.EntityState)
+
+	if len(dir.Subdomain) > 0 {
+		d.Set("subdomain", dir.Subdomain)
+	}
+	if len(dir.CreatedBy) > 0 {
+		d.Set("created_by", dir.CreatedBy)
+	}
+	if len(dir.Description) > 0 {
+		d.Set("description", dir.Description)
+	}
 
 	cpm := make([]map[string]interface{}, len(dir.CustomProperties))
 	for idx, saCP := range dir.CustomProperties {
@@ -364,7 +300,7 @@ func readFromDirectoryIntoResourceData(dir btpaccounts.Directory, d *schema.Reso
 	d.Set("sub_accounts", cpm)
 }
 
-func resourceSapBtpAccountDirectoryDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceSapBtpDirectoryDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	btpAccountsClient := meta.(*SAPClient).btpAccountsV1Client
 
 	input := &btpaccounts.DeleteDirectoryInput{
@@ -383,4 +319,44 @@ func resourceSapBtpAccountDirectoryDelete(ctx context.Context, d *schema.Resourc
 		return diag.FromErr(errors.Errorf("BTP Directory can't be deleted;  %v", err))
 	}
 	return nil
+}
+
+func toBtpAccountsCustomProperties(input interface{}) ([]btpaccounts.CustomProperties, error) {
+	if input != nil {
+		if cpValues, ok := input.([]interface{}); ok {
+			result := make([]btpaccounts.CustomProperties, 0, len(cpValues))
+			for idx := range cpValues {
+				mps, ok := cpValues[idx].(map[string]interface{})
+				if !ok {
+					continue
+				}
+
+				key := ""
+				if val, ok := mps["key"]; ok {
+					key = val.(string)
+				}
+				value := ""
+				if val, ok := mps["value"]; ok {
+					value = val.(string)
+				}
+
+				if len(key) <= 0 {
+					return nil, errors.Errorf("BTP Directory; Custom Properties 'key' is empty:  %v", mps)
+				}
+				if len(value) <= 0 {
+					return nil, errors.Errorf("BTP Directory; Custom Properties 'value' is empty:  %v", mps)
+				}
+
+				cp := btpaccounts.CustomProperties{
+					KeyValue: btpaccounts.KeyValue{
+						Key:   key,
+						Value: value,
+					},
+				}
+				result = append(result, cp)
+			}
+			return result, nil
+		}
+	}
+	return nil, nil
 }

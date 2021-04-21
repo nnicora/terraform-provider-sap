@@ -5,16 +5,17 @@ import (
 	"github.com/hashicorp/go-uuid"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	"github.com/nnicora/sap-sdk-go/sap"
 	"time"
 )
 
 func resourceSapBtpDynamicEntitlements(plan string) *schema.Resource {
 	return &schema.Resource{
-		CreateContext: resourceSapBtpDynamicEntitlementCreate(plan),
-		ReadContext:   resourceSapBtpDynamicEntitlementRead(plan),
-		UpdateContext: resourceSapBtpDynamicEntitlementUpdate(plan),
-		DeleteContext: resourceSapBtpDynamicEntitlementDelete(plan),
+		CreateContext: resourceSapBtpDynamicEntitlementsCreate(plan),
+		ReadContext:   resourceSapBtpDynamicEntitlementsRead(plan),
+		UpdateContext: resourceSapBtpDynamicEntitlementsUpdate(plan),
+		DeleteContext: resourceSapBtpDynamicEntitlementsDelete(plan),
 		Importer: &schema.ResourceImporter{
 			StateContext: schema.ImportStatePassthroughContext,
 		},
@@ -29,8 +30,9 @@ func resourceSapBtpDynamicEntitlements(plan string) *schema.Resource {
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"name": {
-							Type:     schema.TypeString,
-							Required: true,
+							Type:         schema.TypeString,
+							Required:     true,
+							ValidateFunc: validation.StringIsNotWhiteSpace,
 						},
 						"assignment": {
 							Type:     schema.TypeList,
@@ -39,8 +41,9 @@ func resourceSapBtpDynamicEntitlements(plan string) *schema.Resource {
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
 									"sub_account_id": {
-										Type:     schema.TypeString,
-										Required: true,
+										Type:         schema.TypeString,
+										Required:     true,
+										ValidateFunc: validation.StringIsNotWhiteSpace,
 									},
 									"resource": {
 										Type:     schema.TypeList,
@@ -82,7 +85,7 @@ func resourceSapBtpDynamicEntitlements(plan string) *schema.Resource {
 	}
 }
 
-func resourceSapBtpDynamicEntitlementCreate(plan string) func(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceSapBtpDynamicEntitlementsCreate(plan string) func(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	return func(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 		if uuidString, err := uuid.GenerateUUID(); err != nil {
 			return diag.FromErr(err)
@@ -103,7 +106,7 @@ func resourceSapBtpDynamicEntitlementCreate(plan string) func(ctx context.Contex
 	}
 }
 
-func resourceSapBtpDynamicEntitlementRead(plan string) func(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceSapBtpDynamicEntitlementsRead(plan string) func(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	return func(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 		//btpAccountsV1Client := meta.(*SAPClient).btpAccountsV1Client
 
@@ -111,7 +114,7 @@ func resourceSapBtpDynamicEntitlementRead(plan string) func(ctx context.Context,
 	}
 }
 
-func resourceSapBtpDynamicEntitlementUpdate(plan string) func(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceSapBtpDynamicEntitlementsUpdate(plan string) func(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	return func(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 		servicePlans := buildEntitlementsSubAccountServicePlan(d.Get("service"))
 		for spIdx := range servicePlans {
@@ -126,7 +129,7 @@ func resourceSapBtpDynamicEntitlementUpdate(plan string) func(ctx context.Contex
 	}
 }
 
-func resourceSapBtpDynamicEntitlementDelete(plan string) func(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceSapBtpDynamicEntitlementsDelete(plan string) func(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	return func(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 		servicePlans := buildEntitlementsSubAccountServicePlan(d.Get("service"))
 		for spIdx := range servicePlans {

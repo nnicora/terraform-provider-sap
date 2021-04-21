@@ -10,9 +10,9 @@ import (
 	"time"
 )
 
-func dataSourceSapBtpAccountDirectory() *schema.Resource {
+func dataSourceSapBtpDirectory() *schema.Resource {
 	return &schema.Resource{
-		ReadContext: dataSourceSapBtpAccountDirectoryRead,
+		ReadContext: dataSourceSapBtpADirectoryRead,
 		Schema: map[string]*schema.Schema{
 			"directory_id": {
 				Type:     schema.TypeString,
@@ -134,7 +134,7 @@ func dataSourceSapBtpAccountDirectory() *schema.Resource {
 	}
 }
 
-func dataSourceSapBtpAccountDirectoryRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func dataSourceSapBtpADirectoryRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	btpAccountsClient := meta.(*SAPClient).btpAccountsV1Client
 
 	input := &btpaccounts.GetDirectoryInput{

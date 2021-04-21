@@ -105,16 +105,22 @@ func Provider() *schema.Provider {
 		DataSourcesMap: map[string]*schema.Resource{
 			"sap_btp_global_account": dataSourceSapBtpGlobalAccount(),
 			//"sap_btp_global_account_assignments": dataSourceSapBtpGlobalAccountAssignments(),
-
+			"sap_btp_directory":                     dataSourceSapBtpDirectory(),
 			"sap_btp_sub_account":                   dataSourceSapBtpSubAccount(),
 			"sap_btp_sub_account_custom_properties": dataSourceSapBtpSubAccountCustomProperties(),
-			"sap_btp_account_directory":             dataSourceSapBtpAccountDirectory(),
+			"sap_btp_directory_custom_properties":   dataSourceSapBtpDirectoryCustomProperties(),
 		},
 
 		ResourcesMap: map[string]*schema.Resource{
 			"sap_btp_sub_account":                            resourceSapBtpSubAccount(),
 			"sap_btp_sub_account_service_management_binding": resourceSapBtpSubAccountServiceManagementBinding(),
-			"sap_btp_account_directory":                      resourceSapBtpAccountDirectory(),
+
+			"sap_btp_directory":                        resourceSapBtpDirectory(),
+			"sap_btp_directory_features":               resourceSapBtpDirectoryFeatures(),
+			"sap_btp_directory_entitlements":           resourceSapBtpDirectoryEntitlements(),
+			"sap_btp_directory_saas_entitlements":      resourceSapBtpDirectoryDynamicEntitlements("saas"),
+			"sap_btp_directory_elastic_entitlements":   resourceSapBtpDirectoryDynamicEntitlements("elastic"),
+			"sap_btp_directory_unlimited_entitlements": resourceSapBtpDirectoryDynamicEntitlements("unlimited"),
 
 			"sap_btp_entitlements":           resourceSapBtpEntitlements(),
 			"sap_btp_saas_entitlements":      resourceSapBtpDynamicEntitlements("saas"),

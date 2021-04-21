@@ -33,12 +33,14 @@ func resourceSapBtpEntitlements() *schema.Resource {
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"name": {
-							Type:     schema.TypeString,
-							Required: true,
+							Type:         schema.TypeString,
+							Required:     true,
+							ValidateFunc: validation.StringIsNotWhiteSpace,
 						},
 						"plan_name": {
-							Type:     schema.TypeString,
-							Required: true,
+							Type:         schema.TypeString,
+							Required:     true,
+							ValidateFunc: validation.StringIsNotWhiteSpace,
 						},
 						"assignment": {
 							Type:     schema.TypeList,
@@ -48,12 +50,13 @@ func resourceSapBtpEntitlements() *schema.Resource {
 								Schema: map[string]*schema.Schema{
 									"amount": {
 										Type:         schema.TypeInt,
-										Optional:     true,
+										Required:     true,
 										ValidateFunc: validation.IntAtLeast(1),
 									},
 									"sub_account_id": {
-										Type:     schema.TypeString,
-										Required: true,
+										Type:         schema.TypeString,
+										Required:     true,
+										ValidateFunc: validation.StringIsNotWhiteSpace,
 									},
 									"resource": {
 										Type:     schema.TypeList,
@@ -128,7 +131,7 @@ func resourceSapBtpEntitlementFixedAssignmentsDelete(ctx context.Context,
 		assInfos := plans[planIdx].AssignmentInfo
 		for assInfoIdx := range assInfos {
 			if assInfos[assInfoIdx].Amount != nil {
-				assInfos[assInfoIdx].Amount = sap.Float32(0)
+				assInfos[assInfoIdx].Amount = sap.Uint(0)
 			}
 			if assInfos[assInfoIdx].Enable != nil {
 				assInfos[assInfoIdx].Enable = nil
@@ -153,8 +156,13 @@ func entitlementsUpdateSubAccountServicePlan(ctx context.Context, operation stri
 			return diag.Errorf("BTP Sub Account Entitlements can't be %s;  %v", operation, err)
 		}
 	} else if output.StatusCode != 202 {
-		return diag.Errorf("BTP Sub Account Entitlements can't be %s; Operation code %v; %s",
-			operation, output.StatusCode, sap.StringValue(output.Error.Message))
+		if output != nil && output.Error != nil {
+			return diag.Errorf("BTP Sub Account Entitlements can't be %s; Operation code %v; %s",
+				operation, output.StatusCode, sap.StringValue(output.Error.Message))
+		} else {
+			return diag.Errorf("BTP Sub Account Entitlements can't be %s; Operation code %v",
+				operation, output.StatusCode)
+		}
 	} else {
 		retryErr := resource.RetryContext(ctx, 2*time.Minute, func() *resource.RetryError {
 			jobInput := &btpentitlements.GetJobStatusInput{
@@ -235,7 +243,7 @@ func buildEntitlementsAssignments(data interface{}) []btpentitlements.Assignment
 
 		elem := btpentitlements.AssignmentInfo{}
 		if val, ok := m["amount"]; ok && val != nil {
-			elem.Amount = sap.Float32(float32(val.(int)))
+			elem.Amount = sap.Uint(uint(val.(int)))
 		}
 		if val, ok := m["sub_account_id"]; ok && val != nil {
 			elem.SubAccountGuid = val.(string)
