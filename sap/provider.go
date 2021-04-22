@@ -10,6 +10,7 @@ import (
 	"github.com/nnicora/sap-sdk-go/sap/session"
 	"github.com/nnicora/sap-sdk-go/service/btpaccounts"
 	"github.com/nnicora/sap-sdk-go/service/btpentitlements"
+	"github.com/nnicora/sap-sdk-go/service/btpprovisioning"
 	"log"
 	"time"
 )
@@ -105,10 +106,14 @@ func Provider() *schema.Provider {
 		DataSourcesMap: map[string]*schema.Resource{
 			"sap_btp_global_account": dataSourceSapBtpGlobalAccount(),
 			//"sap_btp_global_account_assignments": dataSourceSapBtpGlobalAccountAssignments(),
-			"sap_btp_directory":                     dataSourceSapBtpDirectory(),
-			"sap_btp_sub_account":                   dataSourceSapBtpSubAccount(),
-			"sap_btp_sub_account_custom_properties": dataSourceSapBtpSubAccountCustomProperties(),
-			"sap_btp_directory_custom_properties":   dataSourceSapBtpDirectoryCustomProperties(),
+			"sap_btp_directory":                          dataSourceSapBtpDirectory(),
+			"sap_btp_sub_account":                        dataSourceSapBtpSubAccount(),
+			"sap_btp_sub_account_custom_properties":      dataSourceSapBtpSubAccountCustomProperties(),
+			"sap_btp_sub_account_environments_instances": dataSourceSapBtpSubAccountEnvironmentsInstances(),
+
+			"sap_btp_directory_custom_properties": dataSourceSapBtpDirectoryCustomProperties(),
+
+			"sap_btp_provisioning_available_environments": dataSourceSapBtpProvisioningAvailableEnvironments(),
 		},
 
 		ResourcesMap: map[string]*schema.Resource{
@@ -126,6 +131,8 @@ func Provider() *schema.Provider {
 			"sap_btp_saas_entitlements":      resourceSapBtpDynamicEntitlements("saas"),
 			"sap_btp_elastic_entitlements":   resourceSapBtpDynamicEntitlements("elastic"),
 			"sap_btp_unlimited_entitlements": resourceSapBtpDynamicEntitlements("unlimited"),
+
+			"sap_btp_provisioning_environments": resourceSapBtpProvisioningEnvironments(),
 		},
 	}
 
@@ -190,6 +197,7 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData, terraformVer
 		session:                 sess,
 		btpAccountsV1Client:     btpaccounts.New(sess),
 		btpEntitlementsV1Client: btpentitlements.New(sess),
+		btpProvisioningV1Client: btpprovisioning.New(sess),
 	}, nil
 }
 

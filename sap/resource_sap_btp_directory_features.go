@@ -78,29 +78,31 @@ func resourceSapBtpDirectoryFeaturesRead(ctx context.Context,
 func resourceSapBtpDirectoryFeaturesUpdate(ctx context.Context,
 	d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 
-	directoryId := d.Get("directory_id").(string)
-	input := &btpaccounts.UpdateDirectoryFeaturesInput{
-		DirectoryGuid: directoryId,
-	}
-	if val, ok := d.GetOk("admins"); ok {
-		input.DirectoryAdmins = expandStringSet(val.(*schema.Set))
-	}
-	if val, ok := d.GetOk("features"); ok {
-		input.DirectoryFeatures = expandStringSet(val.(*schema.Set))
-	}
-	return updateDirectoryFeatures(ctx, "updated", input, meta)
+	//directoryId := d.Get("directory_id").(string)
+	//input := &btpaccounts.UpdateDirectoryFeaturesInput{
+	//	DirectoryGuid: directoryId,
+	//}
+	//if val, ok := d.GetOk("admins"); ok {
+	//	input.DirectoryAdmins = expandStringSet(val.(*schema.Set))
+	//}
+	//if val, ok := d.GetOk("features"); ok {
+	//	input.DirectoryFeatures = expandStringSet(val.(*schema.Set))
+	//}
+	//return updateDirectoryFeatures(ctx, "updated", input, meta)
+	return nil
 }
 
 func resourceSapBtpDirectoryFeaturesDelete(ctx context.Context,
 	d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 
-	directoryId := d.Get("directory_id").(string)
-	input := &btpaccounts.UpdateDirectoryFeaturesInput{
-		DirectoryGuid:     directoryId,
-		DirectoryAdmins:   []string{},
-		DirectoryFeatures: []string{},
-	}
-	return updateDirectoryFeatures(ctx, "deleted", input, meta)
+	//directoryId := d.Get("directory_id").(string)
+	//input := &btpaccounts.UpdateDirectoryFeaturesInput{
+	//	DirectoryGuid:     directoryId,
+	//	DirectoryAdmins:   []string{},
+	//	DirectoryFeatures: []string{},
+	//}
+	//return updateDirectoryFeatures(ctx, "deleted", input, meta)
+	return nil
 }
 
 func updateDirectoryFeatures(ctx context.Context, operation string,

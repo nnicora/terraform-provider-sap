@@ -250,6 +250,12 @@ github.com/nnicora/sap-sdk-go v0.0.24 h1:sZgG+YDWoq4t2Dsf5Ajv3vSBJAhDF3FQI7MHdm5
 github.com/nnicora/sap-sdk-go v0.0.24/go.mod h1:w0BIanjEkVm/b/hBQ3joQurkyaNsgfHWGB2bxwvc2W8=
 github.com/nnicora/sap-sdk-go v0.0.25 h1:8j5Gu0Qco4IPgtxk7J/tofAZ+21tJWBdFQRlBu+/KVQ=
 github.com/nnicora/sap-sdk-go v0.0.25/go.mod h1:w0BIanjEkVm/b/hBQ3joQurkyaNsgfHWGB2bxwvc2W8=
+github.com/nnicora/sap-sdk-go v0.0.26 h1:zM1irj9jEPXvLJ1nX+R5e9FgmK5gSYDb27WZgyme3iU=
+github.com/nnicora/sap-sdk-go v0.0.26/go.mod h1:w0BIanjEkVm/b/hBQ3joQurkyaNsgfHWGB2bxwvc2W8=
+github.com/nnicora/sap-sdk-go v0.0.27 h1:8sx2U1DbtnlB647pTxAuzfYuNW8eghjos+nJ2L0a97A=
+github.com/nnicora/sap-sdk-go v0.0.27/go.mod h1:w0BIanjEkVm/b/hBQ3joQurkyaNsgfHWGB2bxwvc2W8=
+github.com/nnicora/sap-sdk-go v0.0.28 h1:Pg6sgRzNrEt17AaSHD5Tb+s0tB/I1y4CzaXZqAXpal0=
+github.com/nnicora/sap-sdk-go v0.0.28/go.mod h1:w0BIanjEkVm/b/hBQ3joQurkyaNsgfHWGB2bxwvc2W8=
 github.com/nsf/jsondiff v0.0.0-20200515183724-f29ed568f4ce/go.mod h1:uFMI8w+ref4v2r9jz+c9i1IfIttS/OkmLfrk1jne5hs=
 github.com/oklog/run v1.0.0 h1:Ru7dDtJNOyC66gQ5dQmaCa0qIsAUFY3sFpK1Xk8igrw=
 github.com/oklog/run v1.0.0/go.mod h1:dlhp/R75TPv97u0XWUtDeV/lRKWPKSdTuV0TZvrmrQA=
