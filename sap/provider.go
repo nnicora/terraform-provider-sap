@@ -11,6 +11,7 @@ import (
 	"github.com/nnicora/sap-sdk-go/service/btpaccounts"
 	"github.com/nnicora/sap-sdk-go/service/btpentitlements"
 	"github.com/nnicora/sap-sdk-go/service/btpprovisioning"
+	"github.com/nnicora/sap-sdk-go/service/btpsaasprovisioning"
 	"log"
 	"time"
 )
@@ -87,16 +88,81 @@ func Provider() *schema.Provider {
 				},
 			},
 
-			"endpoints": {
+			"service_endpoint": {
 				Type:     schema.TypeList,
 				Required: true,
-				MaxItems: 1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"btp": {
-							Type:     schema.TypeMap,
+						"id": {
+							Type:     schema.TypeString,
+							Required: true,
+						},
+						"host": {
+							Type:     schema.TypeString,
+							Required: true,
+						},
+
+						"oauth2": {
+							Type:     schema.TypeList,
 							Optional: true,
-							Elem:     &schema.Schema{Type: schema.TypeString},
+							MaxItems: 1,
+							Elem: &schema.Resource{
+								Schema: map[string]*schema.Schema{
+									"grant_type": {
+										Type:        schema.TypeString,
+										Optional:    true,
+										Default:     "client_credentials",
+										Description: "SAP OAuth2 Grant Type.",
+									},
+									"client_id": {
+										Type:        schema.TypeString,
+										Required:    true,
+										Description: "SAP OAuth2 Client Id.",
+									},
+									"client_secret": {
+										Type:        schema.TypeString,
+										Required:    true,
+										Description: "SAP OAuth2 Client Secret.",
+									},
+									"token_url": {
+										Type:        schema.TypeString,
+										Required:    true,
+										Description: "SAP OAuth2 Token Url.",
+									},
+									"authorization_url": {
+										Type:        schema.TypeString,
+										Optional:    true,
+										Default:     "",
+										Description: "SAP OAuth2 Authorization Url.",
+									},
+									"redirect_url": {
+										Type:        schema.TypeString,
+										Optional:    true,
+										Default:     "",
+										Description: "SAP OAuth2 Redirect Url.",
+									},
+
+									"username": {
+										Type:        schema.TypeString,
+										Optional:    true,
+										Default:     "",
+										Description: "SAP OAuth2 Username. Used in case if 'grant_type=password'.",
+									},
+									"password": {
+										Type:        schema.TypeString,
+										Optional:    true,
+										Default:     "",
+										Description: "SAP OAuth2 Password. Used in case if 'grant_type=password'.",
+									},
+
+									"timeout_seconds": {
+										Type:        schema.TypeInt,
+										Optional:    true,
+										Default:     60,
+										Description: "SAP OAuth2 HTTP Client timeout.",
+									},
+								},
+							},
 						},
 					},
 				},
@@ -114,6 +180,8 @@ func Provider() *schema.Provider {
 			"sap_btp_directory_custom_properties": dataSourceSapBtpDirectoryCustomProperties(),
 
 			"sap_btp_provisioning_available_environments": dataSourceSapBtpProvisioningAvailableEnvironments(),
+			"sap_btp_application_registration":            dataSourceSapBtpApplicationRegistration(),
+			"sap_btp_application_subscriptions":           dataSourceSapBtpApplicationSubscriptions(),
 		},
 
 		ResourcesMap: map[string]*schema.Resource{
@@ -133,6 +201,8 @@ func Provider() *schema.Provider {
 			"sap_btp_unlimited_entitlements": resourceSapBtpDynamicEntitlements("unlimited"),
 
 			"sap_btp_provisioning_environments": resourceSapBtpProvisioningEnvironments(),
+
+			"sap_btp_tenant_application_subscriptions": resourceSapBtpTenantApplicationSubscriptions(),
 		},
 	}
 
@@ -153,36 +223,37 @@ type KubeProvider struct {
 }
 
 func providerConfigure(ctx context.Context, d *schema.ResourceData, terraformVersion string) (interface{}, diag.Diagnostics) {
-	oauth2s := mapFromFromSet(d.Get("oauth2"))
-	log.Printf("[DEBUG] SAP OAuth2 configuration: %v", oauth2s)
+	oauth2Map := mapFrom(d.Get("oauth2"))
+	log.Printf("[DEBUG] Default OAuth2 configuration: %v", oauth2Map)
 
-	endpoints := mapFromFromSet(d.Get("endpoints"))
-	log.Printf("[DEBUG] SAP Endpoints: %v", endpoints)
+	defaultOAuth2 := oauth2ConfigFrom(oauth2Map)
 
-	btpEndpoints := mapFromFromSet(endpoints["btp"])
-	log.Printf("[DEBUG] SAP BTP Endpoints: %v", btpEndpoints)
+	rawEndpoints := listFrom(d.Get("service_endpoint"))
+	log.Printf("[DEBUG] Service Endpoints: %v", rawEndpoints)
 
 	endpointsCfg := make(map[string]*sap.EndpointConfig)
-	for key := range btpEndpoints {
-		endpointsCfg[key] = &sap.EndpointConfig{
-			Host: getOr(btpEndpoints, key, "").(string),
+	for _, rawEndpoint := range rawEndpoints {
+		log.Printf("[DEBUG] Processing Service Endpoints: %v", rawEndpoint)
+
+		endpoint := mapFrom(rawEndpoint)
+
+		serviceId := endpoint["id"].(string)
+		serviceHost := endpoint["host"].(string)
+
+		serviceOAuth2 := defaultOAuth2
+		oauth2Map := mapFrom(endpoint["oauth2"])
+		if len(oauth2Map) != 0 {
+			serviceOAuth2 = oauth2ConfigFrom(oauth2Map)
+		}
+		endpointsCfg[serviceId] = &sap.EndpointConfig{
+			Host:   serviceHost,
+			OAuth2: serviceOAuth2,
 		}
 	}
 
 	cfg := &sap.Config{
-		Endpoints: endpointsCfg,
-
-		DefaultOAuth2: &oauth2.Config{
-			GrantType:    getOr(oauth2s, "grant_type", "").(string),
-			ClientID:     getOr(oauth2s, "client_id", "").(string),
-			ClientSecret: getOr(oauth2s, "client_secret", "").(string),
-			TokenURL:     getOr(oauth2s, "token_url", "").(string),
-			AuthURL:      getOr(oauth2s, "authorization_url", "").(string),
-			RedirectURL:  getOr(oauth2s, "redirect_url", "").(string),
-			Username:     getOr(oauth2s, "username", "").(string),
-			Password:     getOr(oauth2s, "password", "").(string),
-			Timeout:      time.Duration(getOr(oauth2s, "timeout_seconds", 60).(int)) * time.Second,
-		},
+		Endpoints:     endpointsCfg,
+		DefaultOAuth2: defaultOAuth2,
 	}
 
 	cfgBytes, _ := json.Marshal(cfg)
@@ -194,14 +265,29 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData, terraformVer
 	}
 
 	return &SAPClient{
-		session:                 sess,
-		btpAccountsV1Client:     btpaccounts.New(sess),
-		btpEntitlementsV1Client: btpentitlements.New(sess),
-		btpProvisioningV1Client: btpprovisioning.New(sess),
+		session:                     sess,
+		btpAccountsV1Client:         btpaccounts.New(sess),
+		btpEntitlementsV1Client:     btpentitlements.New(sess),
+		btpProvisioningV1Client:     btpprovisioning.New(sess),
+		btpSaaSProvisioningV1Client: btpsaasprovisioning.New(sess),
 	}, nil
 }
 
-func mapFromFromSet(block interface{}) map[string]interface{} {
+func oauth2ConfigFrom(oauth2Map map[string]interface{}) *oauth2.Config {
+	return &oauth2.Config{
+		GrantType:    getOr(oauth2Map, "grant_type", "").(string),
+		ClientID:     getOr(oauth2Map, "client_id", "").(string),
+		ClientSecret: getOr(oauth2Map, "client_secret", "").(string),
+		TokenURL:     getOr(oauth2Map, "token_url", "").(string),
+		AuthURL:      getOr(oauth2Map, "authorization_url", "").(string),
+		RedirectURL:  getOr(oauth2Map, "redirect_url", "").(string),
+		Username:     getOr(oauth2Map, "username", "").(string),
+		Password:     getOr(oauth2Map, "password", "").(string),
+		Timeout:      time.Duration(getOr(oauth2Map, "timeout_seconds", 60).(int)) * time.Second,
+	}
+}
+
+func mapFrom(block interface{}) map[string]interface{} {
 	log.Printf("[DEBUG] RAW Block configuration: %v", block)
 
 	if block == nil {
@@ -213,6 +299,20 @@ func mapFromFromSet(block interface{}) map[string]interface{} {
 	}
 	if m, ok := block.(map[string]interface{}); ok {
 		return m
+	}
+
+	return nil
+}
+
+func listFrom(block interface{}) []interface{} {
+	log.Printf("[DEBUG] RAW Block configuration: %v", block)
+
+	if block == nil {
+		return nil
+	}
+
+	if l, ok := block.([]interface{}); ok {
+		return l
 	}
 
 	return nil

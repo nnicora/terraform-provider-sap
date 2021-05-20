@@ -76,11 +76,7 @@ func resourceSapBtpSubAccountServiceManagementBindingCreate(ctx context.Context,
 		SubAccountGuid: subAccountId.(string),
 	}
 	if output, err := btpAccountsClient.CreateSubAccountServiceManagementBinding(ctx, input); err != nil {
-		if output != nil && output.Error != nil {
-			return diag.FromErr(
-				errors.Errorf("BTP Sub Account ServiceManagementBinding can't be created; %s", sap.StringValue(output.Error.Message)))
-		}
-		return diag.FromErr(errors.Errorf("BTP Sub Account ServiceManagementBinding can't be created;  %v", err))
+		return resourceSapBtpSubAccountServiceManagementBindingRead(ctx, d, meta)
 	} else {
 		d.Set("client_id", output.ClientId)
 		d.Set("client_secret", output.ClientSecret)

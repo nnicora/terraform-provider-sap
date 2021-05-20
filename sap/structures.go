@@ -53,3 +53,19 @@ func expandStringList(configured []interface{}) []string {
 	}
 	return vs
 }
+
+func pointersMapToStringList(pointers map[string]*string) map[string]interface{} {
+	list := make(map[string]interface{}, len(pointers))
+	for i, v := range pointers {
+		list[i] = *v
+	}
+	return list
+}
+
+func stringMapToPointers(m map[string]interface{}) map[string]*string {
+	list := make(map[string]*string, len(m))
+	for i, v := range m {
+		list[i] = sap.String(v.(string))
+	}
+	return list
+}

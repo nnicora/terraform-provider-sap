@@ -27,7 +27,7 @@ func dataSourceSapBtpSubAccountEnvironmentsInstances() *schema.Resource {
 							Computed: true,
 						},
 						"created_date": {
-							Type:     schema.TypeString,
+							Type:     schema.TypeInt,
 							Optional: true,
 							Computed: true,
 						},
@@ -67,7 +67,7 @@ func dataSourceSapBtpSubAccountEnvironmentsInstances() *schema.Resource {
 							Computed: true,
 						},
 						"modified_date": {
-							Type:     schema.TypeString,
+							Type:     schema.TypeInt,
 							Optional: true,
 							Computed: true,
 						},
@@ -156,9 +156,9 @@ func dataSourceSapBtpSubAccountEnvironmentsInstancesRead(ctx context.Context, d 
 			return diag.Errorf("BTP Sub Account Environments can't be read;  %v", err)
 		}
 	} else {
-		result := make([]map[string]string, 0, len(output.Environments))
+		result := make([]map[string]interface{}, 0, len(output.Environments))
 		for _, outEnv := range output.Environments {
-			m := map[string]string{
+			m := map[string]interface{}{
 				"broker_id":         outEnv.BrokerId,
 				"commercial_type":   outEnv.CommercialType,
 				"created_date":      outEnv.CreatedDate,
