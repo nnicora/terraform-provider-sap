@@ -11,12 +11,12 @@ import (
 	"time"
 )
 
-func resourceSapBtpSubAccountServiceManagementBinding() *schema.Resource {
+func resourceSapBtpSubAccountServiceManagement() *schema.Resource {
 	return &schema.Resource{
-		CreateContext: resourceSapBtpSubAccountServiceManagementBindingCreate,
-		ReadContext:   resourceSapBtpSubAccountServiceManagementBindingRead,
-		UpdateContext: resourceSapBtpSubAccountServiceManagementBindingRead,
-		DeleteContext: resourceSapBtpSubAccountServiceManagementBindingDelete,
+		CreateContext: resourceSapBtpSubAccountServiceManagementCreate,
+		ReadContext:   resourceSapBtpSubAccountServiceManagementRead,
+		UpdateContext: resourceSapBtpSubAccountServiceManagementRead,
+		DeleteContext: resourceSapBtpSubAccountServiceManagementDelete,
 		Importer: &schema.ResourceImporter{
 			StateContext: schema.ImportStatePassthroughContext,
 		},
@@ -62,7 +62,7 @@ func resourceSapBtpSubAccountServiceManagementBinding() *schema.Resource {
 	}
 }
 
-func resourceSapBtpSubAccountServiceManagementBindingCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceSapBtpSubAccountServiceManagementCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	btpAccountsClient := meta.(*SAPClient).btpAccountsV1Client
 
 	if uuidString, err := uuid.GenerateUUID(); err != nil {
@@ -76,7 +76,7 @@ func resourceSapBtpSubAccountServiceManagementBindingCreate(ctx context.Context,
 		SubAccountGuid: subAccountId.(string),
 	}
 	if output, err := btpAccountsClient.CreateSubAccountServiceManagementBinding(ctx, input); err != nil {
-		return resourceSapBtpSubAccountServiceManagementBindingRead(ctx, d, meta)
+		return resourceSapBtpSubAccountServiceManagementRead(ctx, d, meta)
 	} else {
 		d.Set("client_id", output.ClientId)
 		d.Set("client_secret", output.ClientSecret)
@@ -88,7 +88,7 @@ func resourceSapBtpSubAccountServiceManagementBindingCreate(ctx context.Context,
 	return nil
 }
 
-func resourceSapBtpSubAccountServiceManagementBindingRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceSapBtpSubAccountServiceManagementRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	btpAccountsClient := meta.(*SAPClient).btpAccountsV1Client
 
 	subAccountId := d.Get("sub_account_id")
@@ -112,7 +112,7 @@ func resourceSapBtpSubAccountServiceManagementBindingRead(ctx context.Context, d
 	return nil
 }
 
-func resourceSapBtpSubAccountServiceManagementBindingDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceSapBtpSubAccountServiceManagementDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	btpAccountsClient := meta.(*SAPClient).btpAccountsV1Client
 
 	subAccountId := d.Get("sub_account_id")

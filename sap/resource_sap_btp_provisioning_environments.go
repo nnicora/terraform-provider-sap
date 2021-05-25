@@ -14,7 +14,8 @@ func resourceSapBtpProvisioningEnvironments() *schema.Resource {
 	return &schema.Resource{
 		CreateContext: resourceSapBtpProvisioningEnvironmentsCreate,
 		ReadContext:   resourceSapBtpProvisioningEnvironmentsRead,
-		UpdateContext: resourceSapBtpProvisioningEnvironmentsUpdate,
+		//UpdateContext: resourceSapBtpProvisioningEnvironmentsUpdate,
+		UpdateContext: resourceSapBtpProvisioningEnvironmentsRead,
 		DeleteContext: resourceSapBtpProvisioningEnvironmentsDelete,
 		Importer: &schema.ResourceImporter{
 			StateContext: schema.ImportStatePassthroughContext,
@@ -24,6 +25,74 @@ func resourceSapBtpProvisioningEnvironments() *schema.Resource {
 			Delete: schema.DefaultTimeout(3 * time.Minute),
 		},
 		Schema: map[string]*schema.Schema{
+			"host": {
+				Type:     schema.TypeString,
+				Required: true,
+			},
+
+			"oauth2": {
+				Type:     schema.TypeList,
+				Required: true,
+				MaxItems: 1,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"grant_type": {
+							Type:        schema.TypeString,
+							Optional:    true,
+							Default:     "client_credentials",
+							Description: "SAP OAuth2 Grant Type.",
+						},
+						"client_id": {
+							Type:        schema.TypeString,
+							Required:    true,
+							Description: "SAP OAuth2 Client Id.",
+						},
+						"client_secret": {
+							Type:        schema.TypeString,
+							Required:    true,
+							Description: "SAP OAuth2 Client Secret.",
+						},
+						"token_url": {
+							Type:        schema.TypeString,
+							Required:    true,
+							Description: "SAP OAuth2 Token Url.",
+						},
+						"authorization_url": {
+							Type:        schema.TypeString,
+							Optional:    true,
+							Default:     "",
+							Description: "SAP OAuth2 Authorization Url.",
+						},
+						"redirect_url": {
+							Type:        schema.TypeString,
+							Optional:    true,
+							Default:     "",
+							Description: "SAP OAuth2 Redirect Url.",
+						},
+
+						"username": {
+							Type:        schema.TypeString,
+							Optional:    true,
+							Default:     "",
+							Description: "SAP OAuth2 Username. Used in case if 'grant_type=password'.",
+						},
+						"password": {
+							Type:        schema.TypeString,
+							Optional:    true,
+							Default:     "",
+							Description: "SAP OAuth2 Password. Used in case if 'grant_type=password'.",
+						},
+
+						"timeout_seconds": {
+							Type:        schema.TypeInt,
+							Optional:    true,
+							Default:     60,
+							Description: "SAP OAuth2 HTTP Client timeout.",
+						},
+					},
+				},
+			},
+
 			"environment_type": {
 				Type:         schema.TypeString,
 				Required:     true,
@@ -31,12 +100,12 @@ func resourceSapBtpProvisioningEnvironments() *schema.Resource {
 			},
 			"plan_name": {
 				Type:         schema.TypeString,
-				Required:     true,
+				Optional:     true,
 				ValidateFunc: validation.StringIsNotWhiteSpace,
 			},
 			"technical_key": {
 				Type:         schema.TypeString,
-				Required:     true,
+				Optional:     true,
 				ValidateFunc: validation.StringIsNotWhiteSpace,
 			},
 
@@ -64,7 +133,7 @@ func resourceSapBtpProvisioningEnvironments() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
-			"params": {
+			"parameters": {
 				Type:     schema.TypeMap,
 				Optional: true,
 				Elem:     &schema.Schema{Type: schema.TypeString},
@@ -108,11 +177,6 @@ func resourceSapBtpProvisioningEnvironments() *schema.Resource {
 				Optional: true,
 			},
 			"operation": {
-				Type:     schema.TypeString,
-				Computed: true,
-				Optional: true,
-			},
-			"parameters": {
 				Type:     schema.TypeString,
 				Computed: true,
 				Optional: true,
@@ -165,7 +229,16 @@ func resourceSapBtpProvisioningEnvironments() *schema.Resource {
 
 func resourceSapBtpProvisioningEnvironmentsCreate(ctx context.Context,
 	d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	btpProvisioningV1Client := meta.(*SAPClient).btpProvisioningV1Client
+	//btpProvisioningV1Client := meta.(*SAPClient).btpProvisioningV1Client
+	session := meta.(*SAPClient).session
+
+	oauth2Map := mapFrom(d.Get("oauth2"))
+	provisioning := &sap.EndpointConfig{
+		Host:   d.Get("host").(string),
+		OAuth2: oauth2ConfigFrom(oauth2Map),
+	}
+	session.AddEndpointWithReplace("provisioning", provisioning)
+	btpProvisioningV1Client := btpprovisioning.New(session)
 
 	input := &btpprovisioning.CreateEnvironmentInstanceInput{
 		EnvironmentType: d.Get("environment_type").(string),
@@ -190,7 +263,7 @@ func resourceSapBtpProvisioningEnvironmentsCreate(ctx context.Context,
 	if val, ok := d.GetOk("user"); ok {
 		input.User = val.(string)
 	}
-	if val, ok := d.GetOk("params"); ok {
+	if val, ok := d.GetOk("parameters"); ok {
 		if m, isMap := val.(map[string]interface{}); isMap {
 			input.Parameters = m
 		}
@@ -212,7 +285,16 @@ func resourceSapBtpProvisioningEnvironmentsCreate(ctx context.Context,
 
 func resourceSapBtpProvisioningEnvironmentsRead(ctx context.Context,
 	d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	btpProvisioningV1Client := meta.(*SAPClient).btpProvisioningV1Client
+	//btpProvisioningV1Client := meta.(*SAPClient).btpProvisioningV1Client
+	session := meta.(*SAPClient).session
+
+	oauth2Map := mapFrom(d.Get("oauth2"))
+	provisioning := &sap.EndpointConfig{
+		Host:   d.Get("host").(string),
+		OAuth2: oauth2ConfigFrom(oauth2Map),
+	}
+	session.AddEndpointWithReplace("provisioning", provisioning)
+	btpProvisioningV1Client := btpprovisioning.New(session)
 
 	input := &btpprovisioning.GetEnvironmentInstanceInput{
 		EnvironmentInstanceId: d.Id(),
@@ -243,7 +325,7 @@ func resourceSapBtpProvisioningEnvironmentsRead(ctx context.Context,
 		d.Set("labels", output.Labels)
 		d.Set("modified_date", output.ModifiedDate)
 		d.Set("operation", output.Operation)
-		d.Set("parameters", output.Parameters)
+		//d.Set("parameters", output.Parameters)
 		d.Set("plan_id", output.PlanId)
 		d.Set("platform_id", output.PlatformId)
 		d.Set("service_id", output.ServiceId)
@@ -259,26 +341,35 @@ func resourceSapBtpProvisioningEnvironmentsRead(ctx context.Context,
 
 func resourceSapBtpProvisioningEnvironmentsUpdate(ctx context.Context,
 	d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-
-	btpProvisioningV1Client := meta.(*SAPClient).btpProvisioningV1Client
-
-	input := &btpprovisioning.UpdateEnvironmentInstanceInput{
-		EnvironmentInstanceId: d.Id(),
-		PlanName:              d.Get("plan_name").(string),
-	}
-	if val, ok := d.GetOk("params"); ok {
-		if m, isMap := val.(map[string]interface{}); isMap {
-			input.Parameters = m
-		}
-	}
-	if output, err := btpProvisioningV1Client.UpdateEnvironmentInstance(ctx, input); err != nil {
-		if output != nil && output.Error != nil {
-			return diag.Errorf("BTP Provisioning Environment can't be updated; Operation code %v; %s",
-				output.StatusCode, sap.StringValue(output.Error.Message))
-		} else {
-			return diag.Errorf("BTP Provisioning Environment can't be updated;  %v", err)
-		}
-	}
+	//btpProvisioningV1Client := meta.(*SAPClient).btpProvisioningV1Client
+	//session := meta.(*SAPClient).session
+	//
+	//oauth2Map := mapFrom( d.Get("oauth2"))
+	//provisioning := &sap.EndpointConfig{
+	//	Host:   d.Get("host").(string),
+	//	OAuth2: oauth2ConfigFrom(oauth2Map),
+	//}
+	//session.AddEndpointWithReplace("provisioning", provisioning)
+	//btpProvisioningV1Client := btpprovisioning.New(session)
+	//
+	//input := &btpprovisioning.UpdateEnvironmentInstanceInput{
+	//	EnvironmentInstanceId: d.Id(),
+	//	PlanName:              d.Get("plan_name").(string),
+	//}
+	//
+	//if val, ok := d.GetOk("parameters"); ok {
+	//	if m, isMap := val.(map[string]interface{}); isMap {
+	//		input.Parameters = m
+	//	}
+	//}
+	//if output, err := btpProvisioningV1Client.UpdateEnvironmentInstance(ctx, input); err != nil {
+	//	if output != nil && output.Error != nil {
+	//		return diag.Errorf("BTP Provisioning Environment can't be updated; Operation code %v; %s",
+	//			output.StatusCode, sap.StringValue(output.Error.Message))
+	//	} else {
+	//		return diag.Errorf("BTP Provisioning Environment can't be updated;  %v", err)
+	//	}
+	//}
 	//else {
 	//	logDebug(output, "Directory Entitlements Output")
 	//	if len(sap.StringValue(output.JobStatusId)) > 0 {
@@ -313,7 +404,16 @@ func resourceSapBtpProvisioningEnvironmentsUpdate(ctx context.Context,
 
 func resourceSapBtpProvisioningEnvironmentsDelete(ctx context.Context,
 	d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	btpProvisioningV1Client := meta.(*SAPClient).btpProvisioningV1Client
+	//btpProvisioningV1Client := meta.(*SAPClient).btpProvisioningV1Client
+	session := meta.(*SAPClient).session
+
+	oauth2Map := mapFrom(d.Get("oauth2"))
+	provisioning := &sap.EndpointConfig{
+		Host:   d.Get("host").(string),
+		OAuth2: oauth2ConfigFrom(oauth2Map),
+	}
+	session.AddEndpointWithReplace("provisioning", provisioning)
+	btpProvisioningV1Client := btpprovisioning.New(session)
 
 	input := &btpprovisioning.DeleteEnvironmentInstanceInput{
 		EnvironmentInstanceId: d.Id(),

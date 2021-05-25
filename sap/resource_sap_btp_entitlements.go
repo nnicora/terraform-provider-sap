@@ -58,6 +58,11 @@ func resourceSapBtpEntitlements() *schema.Resource {
 										Required:     true,
 										ValidateFunc: validation.StringIsNotWhiteSpace,
 									},
+									"enable": {
+										Type:     schema.TypeBool,
+										Optional: true,
+										Default:  false,
+									},
 									"resource": {
 										Type:     schema.TypeList,
 										Optional: true,
@@ -248,6 +253,7 @@ func buildEntitlementsAssignments(data interface{}) []btpentitlements.Assignment
 		if val, ok := m["sub_account_id"]; ok && val != nil {
 			elem.SubAccountGuid = val.(string)
 		}
+
 		if val, ok := m["resource"]; ok && val != nil {
 			elem.Resources = buildEntitlementsResources(val)
 		}

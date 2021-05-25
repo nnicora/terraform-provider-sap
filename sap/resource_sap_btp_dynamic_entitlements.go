@@ -34,6 +34,11 @@ func resourceSapBtpDynamicEntitlements(plan string) *schema.Resource {
 							Required:     true,
 							ValidateFunc: validation.StringIsNotWhiteSpace,
 						},
+						"plan_name": {
+							Type:         schema.TypeString,
+							Required:     true,
+							ValidateFunc: validation.StringIsNotWhiteSpace,
+						},
 						"assignment": {
 							Type:     schema.TypeList,
 							Required: true,

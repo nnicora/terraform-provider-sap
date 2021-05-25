@@ -6,14 +6,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/nnicora/sap-sdk-go/sap"
-	"github.com/nnicora/sap-sdk-go/sap/oauth2"
 	"github.com/nnicora/sap-sdk-go/sap/session"
 	"github.com/nnicora/sap-sdk-go/service/btpaccounts"
 	"github.com/nnicora/sap-sdk-go/service/btpentitlements"
-	"github.com/nnicora/sap-sdk-go/service/btpprovisioning"
-	"github.com/nnicora/sap-sdk-go/service/btpsaasprovisioning"
 	"log"
-	"time"
 )
 
 var endpointServiceNames []string
@@ -185,8 +181,11 @@ func Provider() *schema.Provider {
 		},
 
 		ResourcesMap: map[string]*schema.Resource{
-			"sap_btp_sub_account":                            resourceSapBtpSubAccount(),
-			"sap_btp_sub_account_service_management_binding": resourceSapBtpSubAccountServiceManagementBinding(),
+			"sap_btp_sub_account":                              resourceSapBtpSubAccount(),
+			"sap_btp_sub_account_service_management":           resourceSapBtpSubAccountServiceManagement(),
+			"sap_btp_sub_account_service_management_platforms": resourceSapBtpSubAccountServiceManagementPlatforms(),
+			"sap_btp_sub_account_service_management_instances": resourceSapBtpSubAccountServiceManagementInstances(),
+			"sap_btp_sub_account_service_management_bindings":  resourceSapBtpSubAccountServiceManagementBindings(),
 
 			"sap_btp_directory":                        resourceSapBtpDirectory(),
 			"sap_btp_directory_features":               resourceSapBtpDirectoryFeatures(),
@@ -265,26 +264,12 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData, terraformVer
 	}
 
 	return &SAPClient{
-		session:                     sess,
-		btpAccountsV1Client:         btpaccounts.New(sess),
-		btpEntitlementsV1Client:     btpentitlements.New(sess),
-		btpProvisioningV1Client:     btpprovisioning.New(sess),
-		btpSaaSProvisioningV1Client: btpsaasprovisioning.New(sess),
+		session:                 sess,
+		btpAccountsV1Client:     btpaccounts.New(sess),
+		btpEntitlementsV1Client: btpentitlements.New(sess),
+		//btpProvisioningV1Client:     btpprovisioning.New(sess),
+		//btpSaaSProvisioningV1Client: btpsaasprovisioning.New(sess),
 	}, nil
-}
-
-func oauth2ConfigFrom(oauth2Map map[string]interface{}) *oauth2.Config {
-	return &oauth2.Config{
-		GrantType:    getOr(oauth2Map, "grant_type", "").(string),
-		ClientID:     getOr(oauth2Map, "client_id", "").(string),
-		ClientSecret: getOr(oauth2Map, "client_secret", "").(string),
-		TokenURL:     getOr(oauth2Map, "token_url", "").(string),
-		AuthURL:      getOr(oauth2Map, "authorization_url", "").(string),
-		RedirectURL:  getOr(oauth2Map, "redirect_url", "").(string),
-		Username:     getOr(oauth2Map, "username", "").(string),
-		Password:     getOr(oauth2Map, "password", "").(string),
-		Timeout:      time.Duration(getOr(oauth2Map, "timeout_seconds", 60).(int)) * time.Second,
-	}
 }
 
 func mapFrom(block interface{}) map[string]interface{} {
