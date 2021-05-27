@@ -26,21 +26,4 @@ terraform {
     }
   }
 }
-
-# Configure the SAP Provider
-provider "aws" {
-  region = "us-east-1"
-}
-
-```
-
-Terraform 0.12 and earlier:
-
-```hcl
-# Configure the AWS Provider
-provider "sap" {
-  version = "~> 3.0"
-  region  = "us-east-1"
-}
-
 ```
