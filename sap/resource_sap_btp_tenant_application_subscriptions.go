@@ -7,8 +7,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
-	"github.com/nnicora/sap-sdk-go/sap"
-	"github.com/nnicora/sap-sdk-go/service/btpsaasprovisioning"
+	"github.com/nnicora/sap-sdk-go/service/btpsaasmanager"
+	"github.com/pkg/errors"
 	"time"
 )
 
@@ -26,69 +26,78 @@ func resourceSapBtpTenantApplicationSubscriptions() *schema.Resource {
 			Delete: schema.DefaultTimeout(3 * time.Minute),
 		},
 		Schema: map[string]*schema.Schema{
-			"host": {
-				Type:     schema.TypeString,
-				Required: true,
-			},
-
-			"oauth2": {
+			"saas_manager_service": {
 				Type:     schema.TypeList,
 				Required: true,
 				MaxItems: 1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"grant_type": {
-							Type:        schema.TypeString,
-							Optional:    true,
-							Default:     "client_credentials",
-							Description: "SAP OAuth2 Grant Type.",
-						},
-						"client_id": {
-							Type:        schema.TypeString,
-							Required:    true,
-							Description: "SAP OAuth2 Client Id.",
-						},
-						"client_secret": {
-							Type:        schema.TypeString,
-							Required:    true,
-							Description: "SAP OAuth2 Client Secret.",
-						},
-						"token_url": {
-							Type:        schema.TypeString,
-							Required:    true,
-							Description: "SAP OAuth2 Token Url.",
-						},
-						"authorization_url": {
-							Type:        schema.TypeString,
-							Optional:    true,
-							Default:     "",
-							Description: "SAP OAuth2 Authorization Url.",
-						},
-						"redirect_url": {
-							Type:        schema.TypeString,
-							Optional:    true,
-							Default:     "",
-							Description: "SAP OAuth2 Redirect Url.",
-						},
 
-						"username": {
-							Type:        schema.TypeString,
-							Optional:    true,
-							Default:     "",
-							Description: "SAP OAuth2 Username. Used in case if 'grant_type=password'.",
+						"host": {
+							Type:     schema.TypeString,
+							Required: true,
 						},
-						"password": {
-							Type:        schema.TypeString,
-							Optional:    true,
-							Default:     "",
-							Description: "SAP OAuth2 Password. Used in case if 'grant_type=password'.",
-						},
+						"oauth2": {
+							Type:     schema.TypeList,
+							Required: true,
+							MaxItems: 1,
+							Elem: &schema.Resource{
+								Schema: map[string]*schema.Schema{
+									"grant_type": {
+										Type:        schema.TypeString,
+										Optional:    true,
+										Default:     "client_credentials",
+										Description: "SAP OAuth2 Grant Type.",
+									},
+									"client_id": {
+										Type:        schema.TypeString,
+										Required:    true,
+										Description: "SAP OAuth2 Client Id.",
+									},
+									"client_secret": {
+										Type:        schema.TypeString,
+										Required:    true,
+										Description: "SAP OAuth2 Client Secret.",
+									},
+									"token_url": {
+										Type:        schema.TypeString,
+										Required:    true,
+										Description: "SAP OAuth2 Token Url.",
+									},
+									"authorization_url": {
+										Type:        schema.TypeString,
+										Optional:    true,
+										Default:     "",
+										Description: "SAP OAuth2 Authorization Url.",
+									},
+									"redirect_url": {
+										Type:        schema.TypeString,
+										Optional:    true,
+										Default:     "",
+										Description: "SAP OAuth2 Redirect Url.",
+									},
 
-						"timeout_seconds": {
-							Type:        schema.TypeInt,
-							Optional:    true,
-							Default:     60,
-							Description: "SAP OAuth2 HTTP Client timeout.",
+									"username": {
+										Type:        schema.TypeString,
+										Optional:    true,
+										Default:     "",
+										Description: "SAP OAuth2 Username. Used in case if 'grant_type=password'.",
+									},
+									"password": {
+										Type:        schema.TypeString,
+										Optional:    true,
+										Default:     "",
+										Description: "SAP OAuth2 Password. Used in case if 'grant_type=password'.",
+									},
+
+									"timeout_seconds": {
+										Type:        schema.TypeInt,
+										Optional:    true,
+										Default:     60,
+										Description: "SAP OAuth2 HTTP Client timeout.",
+									},
+								},
+							},
 						},
 					},
 				},
@@ -124,22 +133,23 @@ func resourceSapBtpTenantApplicationSubscriptions() *schema.Resource {
 }
 
 func resourceSapBtpTenantApplicationSubscriptionsCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	//btpSaaSProvisioningV1Client := meta.(*SAPClient).btpSaaSProvisioningV1Client
+	//btpSaasManagerV1Client := meta.(*SAPClient).btpSaasManagerV1Client
 	session := meta.(*SAPClient).session
-
-	oauth2Map := mapFrom(d.Get("oauth2"))
-	provisioning := &sap.EndpointConfig{
-		Host:   d.Get("host").(string),
-		OAuth2: oauth2ConfigFrom(oauth2Map),
+	serviceList := d.Get("saas_manager_service").([]interface{})
+	if len(serviceList) < 1 {
+		return diag.Errorf("SaaS manager service is required")
 	}
-	session.AddEndpointWithReplace("saas-manager", provisioning)
-	btpSaaSProvisioningV1Client := btpsaasprovisioning.New(session)
+	err := session.AddEndpointWithReplace(btpsaasmanager.EndpointsID, extractEndpointConfig(serviceList))
+	if err != nil {
+		return diag.FromErr(errors.Errorf("BTP SaaS Management OAuth2;  %v", err))
+	}
+	btpSaasManagerV1Client := btpsaasmanager.New(session)
 
 	tenantId := d.Get("tenant_id")
-	input := &btpsaasprovisioning.SubscribeTenantToApplicationInput{
+	input := &btpsaasmanager.SubscribeTenantToApplicationInput{
 		TenantId: tenantId.(string),
 	}
-	if output, err := btpSaaSProvisioningV1Client.SubscribeTenantToApplication(ctx, input); err != nil {
+	if output, err := btpSaasManagerV1Client.SubscribeTenantToApplication(ctx, input); err != nil {
 		if output != nil && output.Error != "" {
 			return diag.Errorf("BTP SaaS Subscription to an application can't be done; Operation code %v; %s",
 				output.StatusCode, output.Error)
@@ -148,10 +158,10 @@ func resourceSapBtpTenantApplicationSubscriptionsCreate(ctx context.Context, d *
 		}
 	} else {
 		retryErr := resource.RetryContext(ctx, 2*time.Minute, func() *resource.RetryError {
-			jobInput := &btpsaasprovisioning.GetJobStatusInput{
+			jobInput := &btpsaasmanager.GetJobStatusInput{
 				JobId: output.JobStatusId,
 			}
-			if jobOut, err := btpSaaSProvisioningV1Client.GetJobStatus(ctx, jobInput); err != nil {
+			if jobOut, err := btpSaasManagerV1Client.GetJobStatus(ctx, jobInput); err != nil {
 				return resource.RetryableError(err)
 			} else {
 				// IN_PROGRESS, COMPLETED, FAILED
@@ -184,19 +194,20 @@ func resourceSapBtpTenantApplicationSubscriptionsRead(ctx context.Context, d *sc
 }
 
 func resourceSapBtpTenantApplicationSubscriptionsUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	//btpSaaSProvisioningV1Client := meta.(*SAPClient).btpSaaSProvisioningV1Client
+	//btpSaasManagerV1Client := meta.(*SAPClient).btpSaasManagerV1Client
 	session := meta.(*SAPClient).session
-
-	oauth2Map := mapFrom(d.Get("oauth2"))
-	provisioning := &sap.EndpointConfig{
-		Host:   d.Get("host").(string),
-		OAuth2: oauth2ConfigFrom(oauth2Map),
+	serviceList := d.Get("saas_manager_service").([]interface{})
+	if len(serviceList) < 1 {
+		return diag.Errorf("SaaS manager service is required")
 	}
-	session.AddEndpointWithReplace("saas-manager", provisioning)
-	btpSaaSProvisioningV1Client := btpsaasprovisioning.New(session)
+	err := session.AddEndpointWithReplace(btpsaasmanager.EndpointsID, extractEndpointConfig(serviceList))
+	if err != nil {
+		return diag.FromErr(errors.Errorf("BTP SaaS Management OAuth2;  %v", err))
+	}
+	btpSaasManagerV1Client := btpsaasmanager.New(session)
 
 	tenantId := d.Get("tenant_id")
-	input := &btpsaasprovisioning.UpdateSubscriptionDependenciesInput{
+	input := &btpsaasmanager.UpdateSubscriptionDependenciesInput{
 		TenantId: tenantId.(string),
 	}
 	if val, ok := d.GetOk("skip_unchanged_dependencies"); ok {
@@ -212,7 +223,7 @@ func resourceSapBtpTenantApplicationSubscriptionsUpdate(ctx context.Context, d *
 		input.UpdateApplicationDependencies = val.(map[string]interface{})
 	}
 
-	if output, err := btpSaaSProvisioningV1Client.UpdateSubscriptionDependencies(ctx, input); err != nil {
+	if output, err := btpSaasManagerV1Client.UpdateSubscriptionDependencies(ctx, input); err != nil {
 		if output != nil && output.Error != "" {
 			return diag.Errorf("BTP SaaS Update Subscription can't be done; Operation code %v; %s",
 				output.StatusCode, output.Error)
@@ -221,10 +232,10 @@ func resourceSapBtpTenantApplicationSubscriptionsUpdate(ctx context.Context, d *
 		}
 	} else {
 		retryErr := resource.RetryContext(ctx, 2*time.Minute, func() *resource.RetryError {
-			jobInput := &btpsaasprovisioning.GetJobStatusInput{
+			jobInput := &btpsaasmanager.GetJobStatusInput{
 				JobId: output.JobStatusId,
 			}
-			if jobOut, err := btpSaaSProvisioningV1Client.GetJobStatus(ctx, jobInput); err != nil {
+			if jobOut, err := btpSaasManagerV1Client.GetJobStatus(ctx, jobInput); err != nil {
 				return resource.RetryableError(err)
 			} else {
 				// IN_PROGRESS, COMPLETED, FAILED
@@ -251,22 +262,24 @@ func resourceSapBtpTenantApplicationSubscriptionsUpdate(ctx context.Context, d *
 }
 
 func resourceSapBtpTenantApplicationSubscriptionsDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	//btpSaaSProvisioningV1Client := meta.(*SAPClient).btpSaaSProvisioningV1Client
+	//btpSaasManagerV1Client := meta.(*SAPClient).btpSaasManagerV1Client
 	session := meta.(*SAPClient).session
-
-	oauth2Map := mapFrom(d.Get("oauth2"))
-	provisioning := &sap.EndpointConfig{
-		Host:   d.Get("host").(string),
-		OAuth2: oauth2ConfigFrom(oauth2Map),
+	serviceList := d.Get("saas_manager_service").([]interface{})
+	if len(serviceList) < 1 {
+		return diag.Errorf("SaaS manager service is required")
 	}
-	session.AddEndpointWithReplace("saas-manager", provisioning)
-	btpSaaSProvisioningV1Client := btpsaasprovisioning.New(session)
+	err := session.AddEndpointWithReplace(btpsaasmanager.EndpointsID, extractEndpointConfig(serviceList))
+	if err != nil {
+		return diag.FromErr(errors.Errorf("BTP SaaS Management OAuth2;  %v", err))
+	}
+
+	btpSaasManagerV1Client := btpsaasmanager.New(session)
 
 	tenantId := d.Get("tenant_id")
-	input := &btpsaasprovisioning.UnSubscribeTenantFromApplicationInput{
+	input := &btpsaasmanager.UnSubscribeTenantFromApplicationInput{
 		TenantId: tenantId.(string),
 	}
-	if output, err := btpSaaSProvisioningV1Client.UnSubscribeTenantFromApplication(ctx, input); err != nil {
+	if output, err := btpSaasManagerV1Client.UnSubscribeTenantFromApplication(ctx, input); err != nil {
 		if output != nil && output.Error != "" {
 			return diag.Errorf("BTP SaaS UnSubscribing from an application can't be done; Operation code %v; %s",
 				output.StatusCode, output.Error)
@@ -275,10 +288,10 @@ func resourceSapBtpTenantApplicationSubscriptionsDelete(ctx context.Context, d *
 		}
 	} else {
 		retryErr := resource.RetryContext(ctx, 2*time.Minute, func() *resource.RetryError {
-			jobInput := &btpsaasprovisioning.GetJobStatusInput{
+			jobInput := &btpsaasmanager.GetJobStatusInput{
 				JobId: output.JobStatusId,
 			}
-			if jobOut, err := btpSaaSProvisioningV1Client.GetJobStatus(ctx, jobInput); err != nil {
+			if jobOut, err := btpSaasManagerV1Client.GetJobStatus(ctx, jobInput); err != nil {
 				return resource.RetryableError(err)
 			} else {
 				// IN_PROGRESS, COMPLETED, FAILED

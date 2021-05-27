@@ -268,7 +268,7 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData, terraformVer
 		btpAccountsV1Client:     btpaccounts.New(sess),
 		btpEntitlementsV1Client: btpentitlements.New(sess),
 		//btpProvisioningV1Client:     btpprovisioning.New(sess),
-		//btpSaaSProvisioningV1Client: btpsaasprovisioning.New(sess),
+		//btpSaasManagerV1Client: btpsaasmanager.New(sess),
 	}, nil
 }
 

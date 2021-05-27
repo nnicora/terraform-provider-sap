@@ -4,10 +4,8 @@ import (
 	"context"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/nnicora/sap-sdk-go/sap"
 	"github.com/nnicora/sap-sdk-go/service/btpmanagment"
 	"github.com/pkg/errors"
-	"log"
 	"time"
 )
 
@@ -26,68 +24,78 @@ func resourceSapBtpSubAccountServiceManagementInstances() *schema.Resource {
 			Delete: schema.DefaultTimeout(3 * time.Minute),
 		},
 		Schema: map[string]*schema.Schema{
-			"service_management_url": {
-				Type:     schema.TypeString,
-				Required: true,
-			},
-			"oauth2": {
+			"service_management": {
 				Type:     schema.TypeList,
 				Required: true,
 				MaxItems: 1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"grant_type": {
-							Type:        schema.TypeString,
-							Optional:    true,
-							Default:     "client_credentials",
-							Description: "SAP OAuth2 Grant Type.",
-						},
-						"client_id": {
-							Type:        schema.TypeString,
-							Required:    true,
-							Description: "SAP OAuth2 Client Id.",
-						},
-						"client_secret": {
-							Type:        schema.TypeString,
-							Required:    true,
-							Description: "SAP OAuth2 Client Secret.",
-						},
-						"token_url": {
-							Type:        schema.TypeString,
-							Required:    true,
-							Description: "SAP OAuth2 Token Url.",
-						},
-						"authorization_url": {
-							Type:        schema.TypeString,
-							Optional:    true,
-							Default:     "",
-							Description: "SAP OAuth2 Authorization Url.",
-						},
-						"redirect_url": {
-							Type:        schema.TypeString,
-							Optional:    true,
-							Default:     "",
-							Description: "SAP OAuth2 Redirect Url.",
-						},
 
-						"username": {
-							Type:        schema.TypeString,
-							Optional:    true,
-							Default:     "",
-							Description: "SAP OAuth2 Username. Used in case if 'grant_type=password'.",
+						"host": {
+							Type:     schema.TypeString,
+							Required: true,
 						},
-						"password": {
-							Type:        schema.TypeString,
-							Optional:    true,
-							Default:     "",
-							Description: "SAP OAuth2 Password. Used in case if 'grant_type=password'.",
-						},
+						"oauth2": {
+							Type:     schema.TypeList,
+							Required: true,
+							MaxItems: 1,
+							Elem: &schema.Resource{
+								Schema: map[string]*schema.Schema{
+									"grant_type": {
+										Type:        schema.TypeString,
+										Optional:    true,
+										Default:     "client_credentials",
+										Description: "SAP OAuth2 Grant Type.",
+									},
+									"client_id": {
+										Type:        schema.TypeString,
+										Required:    true,
+										Description: "SAP OAuth2 Client Id.",
+									},
+									"client_secret": {
+										Type:        schema.TypeString,
+										Required:    true,
+										Description: "SAP OAuth2 Client Secret.",
+									},
+									"token_url": {
+										Type:        schema.TypeString,
+										Required:    true,
+										Description: "SAP OAuth2 Token Url.",
+									},
+									"authorization_url": {
+										Type:        schema.TypeString,
+										Optional:    true,
+										Default:     "",
+										Description: "SAP OAuth2 Authorization Url.",
+									},
+									"redirect_url": {
+										Type:        schema.TypeString,
+										Optional:    true,
+										Default:     "",
+										Description: "SAP OAuth2 Redirect Url.",
+									},
 
-						"timeout_seconds": {
-							Type:        schema.TypeInt,
-							Optional:    true,
-							Default:     60,
-							Description: "SAP OAuth2 HTTP Client timeout.",
+									"username": {
+										Type:        schema.TypeString,
+										Optional:    true,
+										Default:     "",
+										Description: "SAP OAuth2 Username. Used in case if 'grant_type=password'.",
+									},
+									"password": {
+										Type:        schema.TypeString,
+										Optional:    true,
+										Default:     "",
+										Description: "SAP OAuth2 Password. Used in case if 'grant_type=password'.",
+									},
+
+									"timeout_seconds": {
+										Type:        schema.TypeInt,
+										Optional:    true,
+										Default:     60,
+										Description: "SAP OAuth2 HTTP Client timeout.",
+									},
+								},
+							},
 						},
 					},
 				},
@@ -154,18 +162,14 @@ func resourceSapBtpSubAccountServiceManagementInstances() *schema.Resource {
 
 func resourceSapBtpSubAccountServiceManagementInstancesCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	session := meta.(*SAPClient).session
-
-	oauth2Map := mapFrom(d.Get("oauth2"))
-	log.Printf("[DEBUG] OAuth2 configuration: %v", oauth2Map)
-
-	serviceManagementUrl := d.Get("service_management_url").(string)
-
-	endpointConfig := &sap.EndpointConfig{
-		Host:   serviceManagementUrl,
-		OAuth2: oauth2ConfigFrom(oauth2Map),
+	serviceList := d.Get("service_management").([]interface{})
+	if len(serviceList) < 1 {
+		return diag.Errorf("Service management is required")
 	}
-	if err := session.AddEndpointWithReplace(btpmanagment.EndpointsID, endpointConfig); err != nil {
-		return diag.FromErr(errors.Errorf("BTP Sub Account ServiceManagement OAuth2;  %v", err))
+
+	err := session.AddEndpointWithReplace(btpmanagment.EndpointsID, extractEndpointConfig(serviceList))
+	if err != nil {
+		return diag.FromErr(errors.Errorf("BTP Service Management OAuth2;  %v", err))
 	}
 
 	btpServiceManagementV1Client := btpmanagment.New(session)
@@ -206,18 +210,14 @@ func resourceSapBtpSubAccountServiceManagementInstancesCreate(ctx context.Contex
 
 func resourceSapBtpSubAccountServiceManagementInstancesRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	session := meta.(*SAPClient).session
-
-	oauth2Map := mapFrom(d.Get("oauth2"))
-	log.Printf("[DEBUG] OAuth2 configuration: %v", oauth2Map)
-
-	serviceManagementUrl := d.Get("service_management_url").(string)
-
-	endpointConfig := &sap.EndpointConfig{
-		Host:   serviceManagementUrl,
-		OAuth2: oauth2ConfigFrom(oauth2Map),
+	serviceList := d.Get("service_management").([]interface{})
+	if len(serviceList) < 1 {
+		return diag.Errorf("Service management is required")
 	}
-	if err := session.AddEndpointWithReplace(btpmanagment.EndpointsID, endpointConfig); err != nil {
-		return diag.FromErr(errors.Errorf("BTP Sub Account ServiceManagement OAuth2;  %v", err))
+
+	err := session.AddEndpointWithReplace(btpmanagment.EndpointsID, extractEndpointConfig(serviceList))
+	if err != nil {
+		return diag.FromErr(errors.Errorf("BTP Service Management OAuth2;  %v", err))
 	}
 
 	btpServiceManagementV1Client := btpmanagment.New(session)
@@ -244,19 +244,15 @@ func resourceSapBtpSubAccountServiceManagementInstancesRead(ctx context.Context,
 
 func resourceSapBtpSubAccountServiceManagementInstancesUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	//session := meta.(*SAPClient).session
-	//
-	//oauth2Map := mapFrom(d.Get("oauth2"))
-	//log.Printf("[DEBUG] OAuth2 configuration: %v", oauth2Map)
-	//
-	//serviceManagementUrl := d.Get("service_management_url").(string)
-	//
-	//endpointConfig := &sap.EndpointConfig {
-	//	Host: serviceManagementUrl,
-	//	OAuth2: oauth2ConfigFrom(oauth2Map),
+	//serviceList := d.Get("service_management").([]interface{})
+	//if len(serviceList) < 1 {
+	//	return diag.Errorf("Service management is required")
 	//}
-	//if err := session.AddEndpointWithReplace(btpmanagment.EndpointsID, endpointConfig); err != nil {
-	//	return diag.FromErr(errors.Errorf("BTP Sub Account ServiceManagement OAuth2;  %v", err))
-	//}
+	//
+	//	err := session.AddEndpointWithReplace(btpmanagment.EndpointsID, extractEndpointConfig(serviceList))
+	//	if err != nil {
+	//		return diag.FromErr(errors.Errorf("BTP Service Management OAuth2;  %v", err))
+	//	}
 	//
 	//btpServiceManagementV1Client := btpmanagment.New(session)
 	//
@@ -289,18 +285,14 @@ func resourceSapBtpSubAccountServiceManagementInstancesUpdate(ctx context.Contex
 
 func resourceSapBtpSubAccountServiceManagementInstancesDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	session := meta.(*SAPClient).session
-
-	oauth2Map := mapFrom(d.Get("oauth2"))
-	log.Printf("[DEBUG] OAuth2 configuration: %v", oauth2Map)
-
-	serviceManagementUrl := d.Get("service_management_url").(string)
-
-	endpointConfig := &sap.EndpointConfig{
-		Host:   serviceManagementUrl,
-		OAuth2: oauth2ConfigFrom(oauth2Map),
+	serviceList := d.Get("service_management").([]interface{})
+	if len(serviceList) < 1 {
+		return diag.Errorf("Service management is required")
 	}
-	if err := session.AddEndpointWithReplace(btpmanagment.EndpointsID, endpointConfig); err != nil {
-		return diag.FromErr(errors.Errorf("BTP Sub Account ServiceManagement OAuth2;  %v", err))
+
+	err := session.AddEndpointWithReplace(btpmanagment.EndpointsID, extractEndpointConfig(serviceList))
+	if err != nil {
+		return diag.FromErr(errors.Errorf("BTP Service Management OAuth2;  %v", err))
 	}
 
 	btpServiceManagementV1Client := btpmanagment.New(session)

@@ -11,5 +11,5 @@ type SAPClient struct {
 	btpAccountsV1Client     *btpaccounts.AccountsV1
 	btpEntitlementsV1Client *btpentitlements.EntitlementsV1
 	//btpProvisioningV1Client     *btpprovisioning.ProvisioningV1
-	//btpSaaSProvisioningV1Client *btpsaasprovisioning.SaaSProvisioningV1
+	//btpSaasManagerV1Client *btpsaasmanager.SaaSProvisioningV1
 }

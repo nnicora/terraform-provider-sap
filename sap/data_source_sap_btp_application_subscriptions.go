@@ -4,77 +4,86 @@ import (
 	"context"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/nnicora/sap-sdk-go/sap"
-	"github.com/nnicora/sap-sdk-go/service/btpsaasprovisioning"
+	"github.com/nnicora/sap-sdk-go/service/btpsaasmanager"
+	"github.com/pkg/errors"
 )
 
 func dataSourceSapBtpApplicationSubscriptions() *schema.Resource {
 	return &schema.Resource{
 		ReadContext: dataSourceSapBtpApplicationSubscriptionsRead,
 		Schema: map[string]*schema.Schema{
-			"host": {
-				Type:     schema.TypeString,
-				Required: true,
-			},
-
-			"oauth2": {
+			"saas_manager_service": {
 				Type:     schema.TypeList,
 				Required: true,
 				MaxItems: 1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"grant_type": {
-							Type:        schema.TypeString,
-							Optional:    true,
-							Default:     "client_credentials",
-							Description: "SAP OAuth2 Grant Type.",
-						},
-						"client_id": {
-							Type:        schema.TypeString,
-							Required:    true,
-							Description: "SAP OAuth2 Client Id.",
-						},
-						"client_secret": {
-							Type:        schema.TypeString,
-							Required:    true,
-							Description: "SAP OAuth2 Client Secret.",
-						},
-						"token_url": {
-							Type:        schema.TypeString,
-							Required:    true,
-							Description: "SAP OAuth2 Token Url.",
-						},
-						"authorization_url": {
-							Type:        schema.TypeString,
-							Optional:    true,
-							Default:     "",
-							Description: "SAP OAuth2 Authorization Url.",
-						},
-						"redirect_url": {
-							Type:        schema.TypeString,
-							Optional:    true,
-							Default:     "",
-							Description: "SAP OAuth2 Redirect Url.",
+						"host": {
+							Type:     schema.TypeString,
+							Required: true,
 						},
 
-						"username": {
-							Type:        schema.TypeString,
-							Optional:    true,
-							Default:     "",
-							Description: "SAP OAuth2 Username. Used in case if 'grant_type=password'.",
-						},
-						"password": {
-							Type:        schema.TypeString,
-							Optional:    true,
-							Default:     "",
-							Description: "SAP OAuth2 Password. Used in case if 'grant_type=password'.",
-						},
+						"oauth2": {
+							Type:     schema.TypeList,
+							Required: true,
+							MaxItems: 1,
+							Elem: &schema.Resource{
+								Schema: map[string]*schema.Schema{
+									"grant_type": {
+										Type:        schema.TypeString,
+										Optional:    true,
+										Default:     "client_credentials",
+										Description: "SAP OAuth2 Grant Type.",
+									},
+									"client_id": {
+										Type:        schema.TypeString,
+										Required:    true,
+										Description: "SAP OAuth2 Client Id.",
+									},
+									"client_secret": {
+										Type:        schema.TypeString,
+										Required:    true,
+										Description: "SAP OAuth2 Client Secret.",
+									},
+									"token_url": {
+										Type:        schema.TypeString,
+										Required:    true,
+										Description: "SAP OAuth2 Token Url.",
+									},
+									"authorization_url": {
+										Type:        schema.TypeString,
+										Optional:    true,
+										Default:     "",
+										Description: "SAP OAuth2 Authorization Url.",
+									},
+									"redirect_url": {
+										Type:        schema.TypeString,
+										Optional:    true,
+										Default:     "",
+										Description: "SAP OAuth2 Redirect Url.",
+									},
 
-						"timeout_seconds": {
-							Type:        schema.TypeInt,
-							Optional:    true,
-							Default:     60,
-							Description: "SAP OAuth2 HTTP Client timeout.",
+									"username": {
+										Type:        schema.TypeString,
+										Optional:    true,
+										Default:     "",
+										Description: "SAP OAuth2 Username. Used in case if 'grant_type=password'.",
+									},
+									"password": {
+										Type:        schema.TypeString,
+										Optional:    true,
+										Default:     "",
+										Description: "SAP OAuth2 Password. Used in case if 'grant_type=password'.",
+									},
+
+									"timeout_seconds": {
+										Type:        schema.TypeInt,
+										Optional:    true,
+										Default:     60,
+										Description: "SAP OAuth2 HTTP Client timeout.",
+									},
+								},
+							},
 						},
 					},
 				},
@@ -212,18 +221,20 @@ func dataSourceSapBtpApplicationSubscriptions() *schema.Resource {
 }
 
 func dataSourceSapBtpApplicationSubscriptionsRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	//btpSaaSProvisioningV1Client := meta.(*SAPClient).btpSaaSProvisioningV1Client
+	//btpSaasManagerV1Client := meta.(*SAPClient).btpSaasManagerV1Client
 	session := meta.(*SAPClient).session
-
-	oauth2Map := mapFrom(d.Get("oauth2"))
-	provisioning := &sap.EndpointConfig{
-		Host:   d.Get("host").(string),
-		OAuth2: oauth2ConfigFrom(oauth2Map),
+	serviceList := d.Get("saas_manager_service").([]interface{})
+	if len(serviceList) < 1 {
+		return diag.Errorf("SaaS manager service is required")
 	}
-	session.AddEndpointWithReplace("saas-manager", provisioning)
-	btpSaaSProvisioningV1Client := btpsaasprovisioning.New(session)
 
-	input := &btpsaasprovisioning.GetApplicationSubscriptionsInput{}
+	err := session.AddEndpointWithReplace(btpsaasmanager.EndpointsID, extractEndpointConfig(serviceList))
+	if err != nil {
+		return diag.FromErr(errors.Errorf("BTP SaaS manager service OAuth2;  %v", err))
+	}
+	btpSaasManagerV1Client := btpsaasmanager.New(session)
+
+	input := &btpsaasmanager.GetApplicationSubscriptionsInput{}
 	if val, ok := d.GetOk("global_account_id"); ok {
 		strVal := val.(string)
 		if len(strVal) > 0 {
@@ -248,7 +259,7 @@ func dataSourceSapBtpApplicationSubscriptionsRead(ctx context.Context, d *schema
 			input.State = strVal
 		}
 	}
-	if output, err := btpSaaSProvisioningV1Client.GetApplicationSubscriptions(ctx, input); err != nil {
+	if output, err := btpSaasManagerV1Client.GetApplicationSubscriptions(ctx, input); err != nil {
 		return diag.Errorf("BTP SaaS Subscription to an application can't be done;  %v", err)
 	} else {
 		subs := make([]map[string]interface{}, 0, len(output.Values))

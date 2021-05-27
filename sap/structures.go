@@ -4,6 +4,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/nnicora/sap-sdk-go/sap"
 	"github.com/nnicora/sap-sdk-go/sap/oauth2"
+	"log"
 	"time"
 )
 
@@ -96,6 +97,18 @@ func stringMapToPointers(m map[string]interface{}) map[string]*string {
 		list[i] = sap.String(v.(string))
 	}
 	return list
+}
+
+func extractEndpointConfig(services []interface{}) *sap.EndpointConfig {
+	service := services[0].(map[string]interface{})
+
+	oauth2Map := mapFrom(service["oauth2"])
+	log.Printf("[DEBUG] OAuth2 configuration: %v", oauth2Map)
+
+	return &sap.EndpointConfig{
+		Host:   service["host"].(string),
+		OAuth2: oauth2ConfigFrom(oauth2Map),
+	}
 }
 
 func oauth2ConfigFrom(oauth2Map map[string]interface{}) *oauth2.Config {

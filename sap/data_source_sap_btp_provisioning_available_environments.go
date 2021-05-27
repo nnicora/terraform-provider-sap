@@ -6,75 +6,85 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/nnicora/sap-sdk-go/sap"
 	"github.com/nnicora/sap-sdk-go/service/btpprovisioning"
+	"github.com/pkg/errors"
 )
 
 func dataSourceSapBtpProvisioningAvailableEnvironments() *schema.Resource {
 	return &schema.Resource{
 		ReadContext: dataSourceSapBtpProvisioningAvailableEnvironmentsRead,
 		Schema: map[string]*schema.Schema{
-			"host": {
-				Type:     schema.TypeString,
-				Required: true,
-			},
-
-			"oauth2": {
+			"provisioning_service": {
 				Type:     schema.TypeList,
 				Required: true,
 				MaxItems: 1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"grant_type": {
-							Type:        schema.TypeString,
-							Optional:    true,
-							Default:     "client_credentials",
-							Description: "SAP OAuth2 Grant Type.",
-						},
-						"client_id": {
-							Type:        schema.TypeString,
-							Required:    true,
-							Description: "SAP OAuth2 Client Id.",
-						},
-						"client_secret": {
-							Type:        schema.TypeString,
-							Required:    true,
-							Description: "SAP OAuth2 Client Secret.",
-						},
-						"token_url": {
-							Type:        schema.TypeString,
-							Required:    true,
-							Description: "SAP OAuth2 Token Url.",
-						},
-						"authorization_url": {
-							Type:        schema.TypeString,
-							Optional:    true,
-							Default:     "",
-							Description: "SAP OAuth2 Authorization Url.",
-						},
-						"redirect_url": {
-							Type:        schema.TypeString,
-							Optional:    true,
-							Default:     "",
-							Description: "SAP OAuth2 Redirect Url.",
+						"host": {
+							Type:     schema.TypeString,
+							Required: true,
 						},
 
-						"username": {
-							Type:        schema.TypeString,
-							Optional:    true,
-							Default:     "",
-							Description: "SAP OAuth2 Username. Used in case if 'grant_type=password'.",
-						},
-						"password": {
-							Type:        schema.TypeString,
-							Optional:    true,
-							Default:     "",
-							Description: "SAP OAuth2 Password. Used in case if 'grant_type=password'.",
-						},
+						"oauth2": {
+							Type:     schema.TypeList,
+							Required: true,
+							MaxItems: 1,
+							Elem: &schema.Resource{
+								Schema: map[string]*schema.Schema{
+									"grant_type": {
+										Type:        schema.TypeString,
+										Optional:    true,
+										Default:     "client_credentials",
+										Description: "SAP OAuth2 Grant Type.",
+									},
+									"client_id": {
+										Type:        schema.TypeString,
+										Required:    true,
+										Description: "SAP OAuth2 Client Id.",
+									},
+									"client_secret": {
+										Type:        schema.TypeString,
+										Required:    true,
+										Description: "SAP OAuth2 Client Secret.",
+									},
+									"token_url": {
+										Type:        schema.TypeString,
+										Required:    true,
+										Description: "SAP OAuth2 Token Url.",
+									},
+									"authorization_url": {
+										Type:        schema.TypeString,
+										Optional:    true,
+										Default:     "",
+										Description: "SAP OAuth2 Authorization Url.",
+									},
+									"redirect_url": {
+										Type:        schema.TypeString,
+										Optional:    true,
+										Default:     "",
+										Description: "SAP OAuth2 Redirect Url.",
+									},
 
-						"timeout_seconds": {
-							Type:        schema.TypeInt,
-							Optional:    true,
-							Default:     60,
-							Description: "SAP OAuth2 HTTP Client timeout.",
+									"username": {
+										Type:        schema.TypeString,
+										Optional:    true,
+										Default:     "",
+										Description: "SAP OAuth2 Username. Used in case if 'grant_type=password'.",
+									},
+									"password": {
+										Type:        schema.TypeString,
+										Optional:    true,
+										Default:     "",
+										Description: "SAP OAuth2 Password. Used in case if 'grant_type=password'.",
+									},
+
+									"timeout_seconds": {
+										Type:        schema.TypeInt,
+										Optional:    true,
+										Default:     60,
+										Description: "SAP OAuth2 HTTP Client timeout.",
+									},
+								},
+							},
 						},
 					},
 				},
@@ -177,13 +187,15 @@ func dataSourceSapBtpProvisioningAvailableEnvironments() *schema.Resource {
 func dataSourceSapBtpProvisioningAvailableEnvironmentsRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	//btpProvisioningV1Client := meta.(*SAPClient).btpProvisioningV1Client
 	session := meta.(*SAPClient).session
-
-	oauth2Map := mapFrom(d.Get("oauth2"))
-	provisioning := &sap.EndpointConfig{
-		Host:   d.Get("host").(string),
-		OAuth2: oauth2ConfigFrom(oauth2Map),
+	serviceList := d.Get("provisioning_service").([]interface{})
+	if len(serviceList) < 1 {
+		return diag.Errorf("Provisioning service is required")
 	}
-	session.AddEndpointWithReplace("provisioning", provisioning)
+
+	err := session.AddEndpointWithReplace(btpprovisioning.EndpointsID, extractEndpointConfig(serviceList))
+	if err != nil {
+		return diag.FromErr(errors.Errorf("BTP Provisioning Service OAuth2;  %v", err))
+	}
 	btpProvisioningV1Client := btpprovisioning.New(session)
 
 	if output, err := btpProvisioningV1Client.GetAvailableEnvironments(ctx); err != nil {
